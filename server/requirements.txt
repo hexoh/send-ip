@@ -1,0 +1,4 @@
+# 服务端（app.py）依赖，装在 VPS 上
+# 客户端只需要 requests，见 requirements-client.txt
+Flask==3.0.3
+gunicorn==22.0.0

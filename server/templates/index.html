@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>当前公网 IP</title>
+    <style>
+        :root { color-scheme: light; }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f6f7f9;
+            color: #1f2937;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                         "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        }
+        .card {
+            width: 100%;
+            max-width: 460px;
+            margin: 24px;
+            padding: 34px 28px 26px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            text-align: center;
+        }
+        .label {
+            font-size: 13px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #6b7280;
+        }
+        .ip {
+            margin: 14px 0 18px;
+            font-size: 31px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            word-break: break-all;
+            color: #111827;
+        }
+        /* 未收到 IP 时置灰，用 body 类切换，避免把 Jinja 写进 CSS 里 */
+        body.no-ip .ip { color: #9ca3af; }
+        .rows {
+            border-top: 1px solid #f0f1f3;
+            padding-top: 16px;
+            display: grid;
+            gap: 10px;
+            text-align: left;
+        }
+        .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 13px;
+        }
+        .row .k { color: #6b7280; flex: none; }
+        .row .v {
+            color: #374151;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+            word-break: break-all;
+        }
+        .dot {
+            display: inline-block;
+            width: 7px; height: 7px;
+            margin-right: 6px;
+            border-radius: 50%;
+            background: #10b981;
+            vertical-align: middle;
+        }
+        body.no-ip .dot { background: #d1d5db; }
+        .foot { margin-top: 20px; font-size: 12px; color: #9ca3af; }
+    </style>
+</head>
+<body class="{% if not ip %}no-ip{% endif %}">
+    <div class="card">
+        <div class="label"><span class="dot"></span>当前公网 IP</div>
+        <div class="ip">{{ ip if ip else '尚未接收到 IP' }}</div>
+
+        {% if ip %}
+        <div class="rows">
+            <div class="row">
+                <span class="k">IP 变更于</span>
+                <span class="v" id="first-seen" data-ts="{{ first_seen }}">{{ first_seen }}</span>
+            </div>
+            <div class="row">
+                <span class="k">最后心跳</span>
+                <span class="v" id="last-seen" data-ts="{{ last_seen }}">{{ last_seen }}</span>
+            </div>
+        </div>
+        {% else %}
+        <div class="foot">等待客户端首次上报</div>
+        {% endif %}
+
+        <div class="foot">页面每 5 分钟自动刷新 · <span id="clock"></span></div>
+    </div>
+    <script>
+        (function () {
+            function rel(iso) {
+                if (!iso) return "";
+                var t = new Date(iso).getTime();
+                if (isNaN(t)) return iso;
+                var d = Math.max(0, Math.floor((Date.now() - t) / 1000));
+                if (d < 60) return d + " 秒前";
+                if (d < 3600) return Math.floor(d / 60) + " 分钟前";
+                if (d < 86400) {
+                    var h = Math.floor(d / 3600), m = Math.floor((d % 3600) / 60);
+                    return h + " 小时" + (m ? " " + m + " 分钟" : "") + "前";
+                }
+                return Math.floor(d / 86400) + " 天前";
+            }
+
+            var targets = ["first-seen", "last-seen"].map(function (id) {
+                var el = document.getElementById(id);
+                return el && el.dataset.ts ? el : null;
+            }).filter(Boolean);
+
+            function update() {
+                targets.forEach(function (el) {
+                    el.textContent = rel(el.dataset.ts);
+                });
+                var c = document.getElementById("clock");
+                if (c) {
+                    c.textContent = "当前 " + new Date().toLocaleString("zh-CN", { hour12: false });
+                }
+            }
+
+            update();
+            // 相对时间每 30 秒重算，否则会一直停在“0 秒前”
+            setInterval(update, 30000);
+        })();
+        // 整页每 5 分钟刷新一次，抓取服务端最新数据
+        setTimeout(function () { location.reload(); }, 300000);
+    </script>
+</body>
+</html>

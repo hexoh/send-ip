@@ -1,0 +1,36 @@
+[Unit]
+Description=send-ip Flask service (接收并展示公网 IP)
+Documentation=https://github.com/hexoh/send-ip
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/send-ip
+
+# 令牌等敏感配置放在 /etc/send-ip.env，权限设为 600
+EnvironmentFile=/etc/send-ip.env
+Environment="DB_PATH=/var/lib/send-ip/ips.db"
+
+ExecStart=/opt/send-ip/.venv/bin/gunicorn \
+    --workers 2 \
+    --bind 127.0.0.1:8000 \
+    --access-logfile - \
+    --error-logfile - \
+    app:app
+
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+
+# 基础加固
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/send-ip
+
+[Install]
+WantedBy=multi-user.target
