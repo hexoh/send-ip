@@ -1,0 +1,159 @@
+name: Release
+
+# 打 tag 即发版：推送 v1.2.3 这样的 tag 会触发打包 + 建 GitHub Release。
+# 本地发版用：python3 tools/release.py 1.2.3
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+  # 手动重跑：修复打包问题后，对已存在的 tag 重新生成附件并覆盖同名 Release
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '已存在的 tag（如 v1.0.0）'
+        required: true
+        type: string
+
+run-name: Release ${{ inputs.tag || github.ref_name }}
+
+permissions:
+  contents: write
+
+# 同一个 tag 同时只跑一个任务，避免并发覆盖附件
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 打包并发布
+    runs-on: ubuntu-latest
+    steps:
+      - name: 解析版本号
+        id: meta
+        env:
+          RAW_REF: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="${RAW_REF#refs/tags/}"
+          tag="${tag#v}"
+          tag="v${tag}"
+
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::tag '${tag}' 不符合 vX.Y.Z 或 vX.Y.Z-rc1 格式"
+            exit 1
+          fi
+
+          version="${tag#v}"
+          echo "tag=${tag}"           >> "$GITHUB_OUTPUT"
+          echo "version=${version}"   >> "$GITHUB_OUTPUT"
+          if [[ "$tag" == *-* ]]; then
+            echo "prerelease=true"    >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false"   >> "$GITHUB_OUTPUT"
+          fi
+          echo "发布版本 ${version}"
+
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+          fetch-depth: 0
+
+      - name: 确认 tag 指向当前提交
+        env:
+          EXPECTED: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          tagged="$(git rev-list -n 1 "$EXPECTED")"
+          echo "tag ${EXPECTED} -> ${tagged}"
+          echo "checkout       -> ${actual}"
+          test "$actual" = "$tagged"
+
+      - name: 准备 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 打包
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: python3 build.py --tar --version "$VERSION"
+
+      - name: 校验产物
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          for pkg in send-ip-server send-ip-client; do
+            tar_file="dist/${pkg}.tar.gz"
+            test -f "$tar_file" || { echo "::error::缺少 $tar_file"; exit 1; }
+            # 包内版本号必须与 tag 一致
+            echo "--- ${pkg} 内容 ---"
+            tar -tzf "$tar_file"
+            packaged="$(tar -xzOf "$tar_file" "${pkg}/VERSION" | tr -d '\r\n')"
+            if [ "$packaged" != "$VERSION" ]; then
+              echo "::error::${pkg} 包内版本 ${packaged} != tag 版本 ${VERSION}"
+              exit 1
+            fi
+          done
+
+          # 关键文件必须真的在包里（防止 build.py 清单被改坏）
+          tar -tzf dist/send-ip-server.tar.gz | grep -qx 'send-ip-server/app.py'
+          tar -tzf dist/send-ip-server.tar.gz | grep -qx 'send-ip-server/templates/index.html'
+          tar -tzf dist/send-ip-server.tar.gz | grep -qx 'send-ip-server/requirements.txt'
+          tar -tzf dist/send-ip-client.tar.gz | grep -qx 'send-ip-client/index.py'
+          tar -tzf dist/send-ip-client.tar.gz | grep -qx 'send-ip-client/requirements.txt'
+          echo "产物校验通过"
+
+      - name: 版本化文件名并生成校验和
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          mv dist/send-ip-server.tar.gz "dist/send-ip-server-${VERSION}.tar.gz"
+          mv dist/send-ip-client.tar.gz "dist/send-ip-client-${VERSION}.tar.gz"
+          cd dist
+          sha256sum ./*.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: 上传工作流产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: send-ip-${{ steps.meta.outputs.version }}
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
+          retention-days: 30
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.tag }}
+          files: |
+            dist/send-ip-server-${{ steps.meta.outputs.version }}.tar.gz
+            dist/send-ip-client-${{ steps.meta.outputs.version }}.tar.gz
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
+          fail_on_unmatched_files: true
+
+      - name: 写入任务摘要
+        if: always()
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo "## ${TAG}（${JOB_STATUS}）"
+            echo
+            echo "| 附件 | 说明 |"
+            echo "|---|---|"
+            echo "| send-ip-server-${VERSION}.tar.gz | 服务端，解压到 /opt/send-ip |"
+            echo "| send-ip-client-${VERSION}.tar.gz | 客户端，解压到 /opt/send-ip-agent |"
+            echo "| SHA256SUMS.txt | 校验和，sha256sum -c 使用 |"
+          } >> "$GITHUB_STEP_SUMMARY"

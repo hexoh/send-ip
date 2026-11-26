@@ -1,6 +1,7 @@
 # send-ip
 
-获取本机公网 IP，上报到自己的服务器并展示。客户端每小时查一次公网 IP 上报，服务端存库并提供网页查看。
+获取本地公网 IP，上报到自己的服务器并展示。客户端每小时查一次公网 IP 上报，服务端存库并提供网页查看。
+> 适用范围: 家庭宽带公网IP或者动态IP
 
 ## 目录结构
 
@@ -22,7 +23,11 @@ send-ip/
 ├── docs/
 │   └── DEPLOY.md        # 完整部署指南（VPS + Nginx + HTTPS + systemd）
 ├── tools/
-│   └── preview.py       # 用示例数据渲染页面快照，方便预览
+│   ├── preview.py       # 用示例数据渲染页面快照，方便预览
+│   └── release.py       # 发版脚本：打 tag → 推送 → 由 CI 打包发布
+├── .github/
+│   └── workflows/
+│       └── release.yml  # tag 触发：打包 + 建 GitHub Release
 ├── build.py             # 打包脚本：生成 dist/ 下的两个部署包
 ├── dist/                # 打包输出（已 gitignore）
 └── README.md
@@ -42,14 +47,48 @@ send-ip/
 ```bash
 python3 build.py          # 生成 dist/send-ip-server 和 dist/send-ip-client
 python3 build.py --tar    # 顺便压成 tar.gz，方便 scp
+python3 build.py --version 1.2.3   # 指定版本号，写进包内 VERSION（默认取 git tag）
 ```
 
 打包时会把 `server/`、`client/` 的内容**拍平成部署时的实际布局**，并各附一份 `README.md`：
 
 | 包 | 内容 | 部署到 |
 |---|---|---|
-| `dist/send-ip-server/` | `app.py`、`templates/`、`requirements.txt`、`.env.example`、`Dockerfile`、`deploy/{sendip.service,nginx.conf}` | `/opt/send-ip` |
-| `dist/send-ip-client/` | `index.py`、`requirements.txt`、`deploy/{sendip-agent.service,sendip-agent.env.example}` | `/opt/send-ip-agent` |
+| `dist/send-ip-server/` | `app.py`、`templates/`、`requirements.txt`、`.env.example`、`Dockerfile`、`VERSION`、`deploy/{sendip.service,nginx.conf}` | `/opt/send-ip` |
+| `dist/send-ip-client/` | `index.py`、`requirements.txt`、`VERSION`、`deploy/{sendip-agent.service,sendip-agent.env.example}` | `/opt/send-ip-agent` |
+
+## 发布新版本
+
+发版靠 **git tag 触发 GitHub Actions**：推一个 `v1.2.3` 的 tag，CI 自动打包两个部署包、算校验和、建 GitHub Release 并挂上附件。不用手动 `scp`。
+
+一条命令发版（推荐）：
+
+```bash
+python3 tools/release.py 1.2.3           # 校验 + 试打包 + 打 tag + 推送
+python3 tools/release.py 1.2.3-rc1       # 预发布，Release 会标 prerelease
+python3 tools/release.py 1.2.3 --dry-run # 只体检，不动 git
+```
+
+脚本会拦下这些坑：版本号格式不对、工作区有未提交改动（tag 内容会和本地代码不一致）、tag 本地或远端已存在、本地试打包失败。走完就能在 Actions 里看进度，跑完 Release 页面自动出现。
+
+手动等价操作（不用脚本时）：
+
+```bash
+git tag -a v1.2.3 -m "release v1.2.3"
+git push origin v1.2.3
+```
+
+Release 附件：
+
+| 附件 | 说明 |
+|---|---|
+| `send-ip-server-1.2.3.tar.gz` | 服务端，解压到 `/opt/send-ip` |
+| `send-ip-client-1.2.3.tar.gz` | 客户端，解压到 `/opt/send-ip-agent` |
+| `SHA256SUMS.txt` | 校验和，`sha256sum -c SHA256SUMS.txt` 验完整性 |
+
+版本号规则：`vMAJOR.MINOR.PATCH`，带 `-rc1` / `-beta.2` 这类后缀会自动标成预发布。CI 会校验 tag 与包内 `VERSION` 一致、两个包的关键文件齐全，任何一步不对就失败，不会发出半个包。
+
+打包逻辑改坏了想重发同一个版本：Actions 页面选 `Release` → `Run workflow`，填已存在的 tag，会重新打包并覆盖同名 Release 的附件（不会新建 tag）。
 
 ## 本地快速验证
 

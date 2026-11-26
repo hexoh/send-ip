@@ -5,6 +5,7 @@
     python3 build.py                 # 生成 dist/send-ip-server 和 dist/send-ip-client
     python3 build.py --tar           # 额外生成两个 .tar.gz
     python3 build.py --out /tmp/pkg  # 指定输出目录
+    python3 build.py --version 1.2.0 # 指定版本号（默认取 git describe）
     python3 build.py --clean         # 只清理，不生成
 
 只用标准库，不需要装任何依赖，直接 python3 build.py 即可。
@@ -13,6 +14,7 @@
 import argparse
 import os
 import shutil
+import subprocess
 import sys
 import tarfile
 from datetime import datetime
@@ -167,6 +169,41 @@ CLIENT_README = """\
 """
 
 
+def detect_version():
+    """没显式给版本号时，用当前 tag 推断；都不行就标记为 dev。
+
+    git describe 在打 tag 的提交上返回 v1.2.0，在之后返回 v1.2.0-3-gabc1234。
+    """
+    try:
+        out = subprocess.run(
+            ["git", "describe", "--tags", "--always", "--dirty"],
+            cwd=BASE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "dev"
+    if out.returncode != 0:
+        return "dev"
+    return out.stdout.strip() or "dev"
+
+
+def normalize_version(raw):
+    """v1.2.0 → 1.2.0，保证 VERSION 文件里不带前导 v。"""
+    v = (raw or "").strip()
+    if v.startswith("v"):
+        v = v[1:]
+    return v or "dev"
+
+
+def write_version(bundle_dir, version):
+    path = os.path.join(bundle_dir, "VERSION")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(version + "\n")
+    return path
+
+
 def copy_files(bundle_dir, files):
     missing = []
     for src_rel, dst_rel in files:
@@ -213,8 +250,15 @@ def main():
     parser = argparse.ArgumentParser(description="打包 server / client 两个部署包")
     parser.add_argument("--out", default=DEFAULT_OUT, help="输出目录，默认 ./dist")
     parser.add_argument("--tar", action="store_true", help="额外生成 .tar.gz 压缩包")
+    parser.add_argument(
+        "--version",
+        default=None,
+        help="版本号，写入包内 VERSION 文件；默认取 git describe 结果",
+    )
     parser.add_argument("--clean", action="store_true", help="只清理输出目录")
     args = parser.parse_args()
+
+    version = normalize_version(args.version or detect_version())
 
     server_dir = os.path.join(args.out, SERVER_NAME)
     client_dir = os.path.join(args.out, CLIENT_NAME)
@@ -247,9 +291,11 @@ def main():
 
     write_readme(server_dir, SERVER_README)
     write_readme(client_dir, CLIENT_README)
+    write_version(server_dir, version)
+    write_version(client_dir, version)
 
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    print(f"打包完成（{stamp}）→ {args.out}\n")
+    print(f"打包完成（{stamp}）  版本 {version} → {args.out}\n")
 
     for d in (server_dir, client_dir):
         print(f"[{os.path.basename(d)}]")
