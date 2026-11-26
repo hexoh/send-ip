@@ -1,7 +1,7 @@
 # send-ip
 
 获取本地公网 IP，上报到自己的服务器并展示。客户端每小时查一次公网 IP 上报，服务端存库并提供网页查看。
-> 适用范围: 家庭宽带公网IP或者动态IP
+> 适用范围: 家庭宽带公网IP或者动态IP的服务器
 
 ## 目录结构
 
@@ -109,4 +109,4 @@ APP_TOKEN=devtoken .venv/bin/python server/app.py
 只想看页面长什么样（不起服务）：`.venv/bin/python tools/preview.py` 会生成 `preview.html`，
 加 `--empty` 可预览"尚未接收 IP"的空状态。
 
-生产部署见 [docs/DEPLOY.md](docs/DEPLOY.md)。
+生产部署见 [DEPLOY.md](docs/DEPLOY.md)。
