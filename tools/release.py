@@ -46,13 +46,13 @@ def run(cmd, check=True, capture=True, cwd=BASE_DIR):
             timeout=300,
         )
     except FileNotFoundError:
-        raise ReleaseError(f"找不到命令 {cmd[0]}，请确认已安装")
+        raise ReleaseError(f"Command not found: {cmd[0]}; make sure it is installed")
     except subprocess.SubprocessError as exc:
-        raise ReleaseError(f"执行 {' '.join(cmd)} 失败：{exc}")
+        raise ReleaseError(f"Failed to run {' '.join(cmd)}: {exc}")
 
     if check and proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()
-        raise ReleaseError(f"命令失败（退出码 {proc.returncode}）：{' '.join(cmd)}\n{detail}")
+        raise ReleaseError(f"Command failed (exit code {proc.returncode}): {' '.join(cmd)}\n{detail}")
     return proc
 
 
@@ -71,7 +71,7 @@ def parse_version(raw):
         text = text[1:]
     if not VERSION_RE.match(text):
         raise ReleaseError(
-            f"版本号 '{raw}' 不合法，应形如 1.2.3 或 1.2.3-rc1（可带前导 v）"
+            f"Invalid version '{raw}'; expected something like 1.2.3 or 1.2.3-rc1 (a leading v is allowed)"
         )
     return text, "-" in text
 
@@ -83,44 +83,44 @@ def version_key(version):
 
 def check_repo():
     if not os.path.isdir(os.path.join(BASE_DIR, ".git")):
-        raise ReleaseError(f"{BASE_DIR} 不是 git 仓库根目录")
-    print(f"{OK} 仓库 {BASE_DIR}")
+        raise ReleaseError(f"{BASE_DIR} is not a git repository root")
+    print(f"{OK} repository {BASE_DIR}")
 
 
 def check_branch(allowed_dirty):
     branch = out("rev-parse", "--abbrev-ref", "HEAD")
     if branch == "HEAD":
-        raise ReleaseError("当前处于 detached HEAD，请先切回分支再发版")
-    print(f"{OK} 分支 {branch}")
+        raise ReleaseError("Currently in detached HEAD; switch back to a branch before releasing")
+    print(f"{OK} branch {branch}")
 
     if not allowed_dirty:
         dirty = out("status", "--porcelain", "--untracked-files=normal")
         if dirty:
             lines = dirty.splitlines()
             preview = "\n".join("      " + ln for ln in lines[:10])
-            more = f"\n      …… 另外 {len(lines) - 10} 个文件" if len(lines) > 10 else ""
+            more = f"\n      ... and {len(lines) - 10} more files" if len(lines) > 10 else ""
             raise ReleaseError(
-                "工作区有未提交的改动，发布出去的 tag 会和当前代码不一致：\n"
+                "The working tree has uncommitted changes; the released tag would not match the current code:\n"
                 f"{preview}{more}\n"
-                "  先 commit 再发版；确需忽略可加 --allow-dirty"
+                "  Commit first, then release; add --allow-dirty to ignore this check"
             )
-        print(f"{OK} 工作区干净")
+        print(f"{OK} working tree clean")
 
     return branch
 
 
 def check_tag_free(tag):
     if git("rev-parse", "-q", "--verify", f"refs/tags/{tag}", check=False).returncode == 0:
-        raise ReleaseError(f"本地已存在 tag {tag}，换个版本号（不要覆盖已发布的 tag）")
-    print(f"{OK} 本地无同名 tag")
+        raise ReleaseError(f"Local tag {tag} already exists; choose another version (do not overwrite a released tag)")
+    print(f"{OK} no local tag with that name")
 
     remote = git("ls-remote", "--tags", "origin", f"refs/tags/{tag}", check=False)
     if remote.returncode != 0:
-        print(f"{WARN} 无法查询远端 tag（{remote.stderr.strip().splitlines()[:1]}），跳过该检查")
+        print(f"{WARN} cannot query remote tags ({remote.stderr.strip().splitlines()[:1]}); skipping this check")
         return
     if remote.stdout.strip():
-        raise ReleaseError(f"远端已存在 tag {tag}，说明这个版本发过了，换个版本号")
-    print(f"{OK} 远端无同名 tag")
+        raise ReleaseError(f"Remote tag {tag} already exists, so this version was already released; choose another version")
+    print(f"{OK} no remote tag with that name")
 
 
 def warn_if_not_latest(version):
@@ -131,7 +131,7 @@ def warn_if_not_latest(version):
         return
     latest = max(valid, key=version_key)
     if version_key(version) < version_key(latest):
-        print(f"{WARN} {version} 低于已有最高版本 v{latest}，确认不是手滑？")
+        print(f"{WARN} {version} is lower than the highest existing version v{latest}; sure this is intentional?")
 
 
 def trial_build(version):
@@ -142,59 +142,59 @@ def trial_build(version):
     )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()
-        raise ReleaseError(f"试打包失败，先修好再发版：\n{detail}")
+        raise ReleaseError(f"Trial build failed; fix it before releasing:\n{detail}")
 
     dist = os.path.join(BASE_DIR, "dist")
     for pkg in ("send-ip-server", "send-ip-client"):
         tar_path = os.path.join(dist, f"{pkg}.tar.gz")
         if not os.path.isfile(tar_path):
-            raise ReleaseError(f"试打包缺少 {tar_path}")
+            raise ReleaseError(f"Trial build is missing {tar_path}")
         # The bundled VERSION must match the version being released, to catch problems before CI
         ver = run(
             ["tar", "-xzOf", tar_path, f"{pkg}/VERSION"], check=False
         )
         if ver.returncode != 0 or ver.stdout.strip() != version:
-            raise ReleaseError(f"{pkg} 包内版本不是 {version}，打包流程有问题")
-    print(f"{OK} 试打包通过（dist/send-ip-*.tar.gz）")
+            raise ReleaseError(f"{pkg} bundle version is not {version}; the packaging flow is broken")
+    print(f"{OK} trial build passed (dist/send-ip-*.tar.gz)")
 
 
 def create_tag(tag, message, dry_run):
     if dry_run:
-        print(f"{OK} [dry-run] 将创建 tag {tag}：{message}")
+        print(f"{OK} [dry-run] would create tag {tag}: {message}")
         return
     git("tag", "-a", tag, "-m", message)
-    print(f"{OK} 已创建 tag {tag}")
+    print(f"{OK} created tag {tag}")
 
 
 def push_everything(tag, branch, upstream, dry_run):
     """Push the branch first (ensure the code is on the remote), then push the tag (which triggers CI)."""
     if dry_run:
         if upstream:
-            print(f"{OK} [dry-run] 将执行 git push（{branch} → {upstream}）")
-        print(f"{OK} [dry-run] 将执行 git push origin {tag}")
+            print(f"{OK} [dry-run] would run git push ({branch} -> {upstream})")
+        print(f"{OK} [dry-run] would run git push origin {tag}")
         return
 
     if upstream:
         ahead = git("rev-list", "--count", f"{upstream}..HEAD", check=False).stdout.strip()
         if ahead and ahead != "0":
-            print(f"  推送分支 {branch}（领先 {ahead} 个提交）……")
+            print(f"  Pushing branch {branch} ({ahead} commits ahead)...")
             git("push")
-            print(f"{OK} 分支已推送")
+            print(f"{OK} branch pushed")
         else:
-            print(f"{OK} 分支无新提交，跳过")
+            print(f"{OK} no new commits on the branch; skipping")
     else:
-        print(f"{WARN} 当前分支没有上游，跳过分支推送（记得自己 push 代码）")
+        print(f"{WARN} current branch has no upstream; skipping branch push (remember to push your code)")
 
-    print(f"  推送 tag {tag} ……")
+    print(f"  Pushing tag {tag} ...")
     pushed = git("push", "origin", tag, check=False)
     if pushed.returncode != 0:
         detail = (pushed.stderr or pushed.stdout or "").strip()
         raise ReleaseError(
-            f"推送 tag 失败：\n{detail}\n"
-            f"  本地 tag 已创建，修好网络/权限后重试：git push origin {tag}\n"
-            f"  想撤销：git tag -d {tag}"
+            f"Failed to push tag:\n{detail}\n"
+            f"  The local tag was created; retry after fixing network/permissions: git push origin {tag}\n"
+            f"  To undo: git tag -d {tag}"
         )
-    print(f"{OK} tag 已推送，CI 开始打包")
+    print(f"{OK} tag pushed; CI is building")
 
 
 def repo_url():
@@ -210,13 +210,13 @@ def repo_url():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="打 tag 触发 GitHub Actions 发版")
-    parser.add_argument("version", help="版本号，如 1.2.3 或 1.2.3-rc1")
-    parser.add_argument("-m", "--message", default=None, help="tag 说明，默认为 release vX.Y.Z")
-    parser.add_argument("--dry-run", action="store_true", help="只体检和试打包，不创建/推送 tag")
-    parser.add_argument("--skip-build", action="store_true", help="跳过本地试打包")
-    parser.add_argument("--no-push", action="store_true", help="只创建本地 tag，不推送")
-    parser.add_argument("--allow-dirty", action="store_true", help="允许工作区有未提交改动")
+    parser = argparse.ArgumentParser(description="Create a tag to trigger a GitHub Actions release")
+    parser.add_argument("version", help="Version, e.g. 1.2.3 or 1.2.3-rc1")
+    parser.add_argument("-m", "--message", default=None, help="Tag message, defaults to release vX.Y.Z")
+    parser.add_argument("--dry-run", action="store_true", help="Run checks and a trial build only; do not create/push a tag")
+    parser.add_argument("--skip-build", action="store_true", help="Skip the local trial build")
+    parser.add_argument("--no-push", action="store_true", help="Create the local tag only; do not push")
+    parser.add_argument("--allow-dirty", action="store_true", help="Allow uncommitted changes in the working tree")
     args = parser.parse_args()
 
     try:
@@ -224,14 +224,14 @@ def main():
         tag = f"v{version}"
         message = args.message or f"release {tag}"
 
-        print(f"发版 {tag}{'（预发布）' if is_pre else ''}\n")
+        print(f"Releasing {tag}{' (pre-release)' if is_pre else ''}\n")
         check_repo()
         check_branch(args.allow_dirty)
         check_tag_free(tag)
         warn_if_not_latest(version)
 
         if args.skip_build:
-            print(f"{WARN} 已跳过本地试打包")
+            print(f"{WARN} skipped local trial build")
         else:
             trial_build(version)
 
@@ -242,17 +242,17 @@ def main():
         print()
         create_tag(tag, message, args.dry_run)
         if args.no_push:
-            print(f"{OK} 已按 --no-push 停在本地，稍后手动执行：git push origin {tag}")
+            print(f"{OK} stopped locally due to --no-push; run later: git push origin {tag}")
         else:
             push_everything(tag, branch, upstream, args.dry_run)
 
         url = repo_url()
         print()
         if url:
-            print(f"查看进度：{url}/actions")
-            print(f"发布页：  {url}/releases/tag/{tag}")
-        print("CI 跑完后，Release 里会有两个包和 SHA256SUMS.txt。")
-        print("服务端解压到 /opt/send-ip，客户端解压到 /opt/send-ip-agent。")
+            print(f"Progress: {url}/actions")
+            print(f"Release:  {url}/releases/tag/{tag}")
+        print("When CI finishes, the Release will contain both bundles and SHA256SUMS.txt.")
+        print("Extract the server bundle to /opt/send-ip and the client bundle to /opt/send-ip-agent.")
         return 0
     except ReleaseError as exc:
         print(f"\n{BAD} {exc}", file=sys.stderr)

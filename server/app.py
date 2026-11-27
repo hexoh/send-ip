@@ -74,7 +74,7 @@ def get_db():
                 (old[0], old[1], old[1]),
             )
         conn.commit()
-        log.info("已升级 ip_record 表结构为心跳模式（保留原 IP: %s）", old[0] if old else "无")
+        log.info("Upgraded ip_record schema to heartbeat mode (kept IP: %s)", old[0] if old else "none")
     return conn
 
 
@@ -122,7 +122,7 @@ def load_last():
         finally:
             conn.close()
     except sqlite3.Error as exc:
-        log.exception("读取数据库失败: %s", exc)
+        log.exception("Failed to read database: %s", exc)
         return {"ip": None, "first_seen": None, "last_seen": None}
     if not row:
         return {"ip": None, "first_seen": None, "last_seen": None}
@@ -151,9 +151,9 @@ def index():
 @app.route("/receive_ip", methods=["POST"])  # Legacy route kept for compatibility; remove this line once no old clients remain
 def receive_ip():
     if request.path.rstrip("/").endswith("receive_ip"):
-        log.warning("收到旧地址 /receive_ip 的请求，已自动兼容，请把客户端改为 /receive-ip")
+        log.warning("Received a request on legacy /receive_ip; handled for compatibility. Please update the client to /receive-ip")
     if not token_ok():
-        log.warning("鉴权失败，来源 %s", request.remote_addr)
+        log.warning("Authentication failed from %s", request.remote_addr)
         return jsonify(success=False, error="unauthorized"), 401
 
     data = request.get_json(silent=True) or {}
@@ -163,9 +163,9 @@ def receive_ip():
 
     result = save_ip(ip)
     log.info(
-        "收到 IP %s（%s）来自 %s",
+        "Received IP %s (%s) from %s",
         ip,
-        "IP 已变更" if result["changed"] else "心跳，IP 未变",
+        "IP changed" if result["changed"] else "heartbeat, IP unchanged",
         request.remote_addr,
     )
     return jsonify(success=True, **result)

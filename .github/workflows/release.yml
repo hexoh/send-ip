@@ -104,8 +104,10 @@ jobs:
           tar -tzf dist/send-ip-server.tar.gz | grep -qx 'send-ip-server/app.py'
           tar -tzf dist/send-ip-server.tar.gz | grep -qx 'send-ip-server/templates/index.html'
           tar -tzf dist/send-ip-server.tar.gz | grep -qx 'send-ip-server/requirements.txt'
+          tar -tzf dist/send-ip-server.tar.gz | grep -qx 'send-ip-server/README.md'
           tar -tzf dist/send-ip-client.tar.gz | grep -qx 'send-ip-client/index.py'
           tar -tzf dist/send-ip-client.tar.gz | grep -qx 'send-ip-client/requirements.txt'
+          tar -tzf dist/send-ip-client.tar.gz | grep -qx 'send-ip-client/README.md'
           echo "Artifact validation passed"
 
       - name: Version file names and generate checksums

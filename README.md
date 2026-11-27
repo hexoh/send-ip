@@ -30,6 +30,9 @@ send-ip/
 ├── tools/
 │   ├── preview.py       # Render a page snapshot from sample data for preview
 │   └── release.py       # Release script: tag → push → CI builds and publishes
+├── packaging/           # Bilingual README templates copied into each bundle
+│   ├── server-README.md
+│   └── client-README.md
 ├── .github/
 │   └── workflows/
 │       └── release.yml  # Triggered by tag: build + create GitHub Release

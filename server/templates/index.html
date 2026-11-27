@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title>当前公网 IP</title>
+    <title>Current Public IP</title>
     <style>
         :root { color-scheme: light; }
         * { box-sizing: border-box; }
@@ -80,25 +80,25 @@
 </head>
 <body class="{% if not ip %}no-ip{% endif %}">
     <div class="card">
-        <div class="label"><span class="dot"></span>当前公网 IP</div>
-        <div class="ip">{{ ip if ip else '尚未接收到 IP' }}</div>
+        <div class="label"><span class="dot"></span>Current Public IP</div>
+        <div class="ip">{{ ip if ip else 'No IP received yet' }}</div>
 
         {% if ip %}
         <div class="rows">
             <div class="row">
-                <span class="k">IP 变更于</span>
+                <span class="k">IP changed at</span>
                 <span class="v" id="first-seen" data-ts="{{ first_seen }}">{{ first_seen }}</span>
             </div>
             <div class="row">
-                <span class="k">最后心跳</span>
+                <span class="k">Last heartbeat</span>
                 <span class="v" id="last-seen" data-ts="{{ last_seen }}">{{ last_seen }}</span>
             </div>
         </div>
         {% else %}
-        <div class="foot">等待客户端首次上报</div>
+        <div class="foot">Waiting for the first client report</div>
         {% endif %}
 
-        <div class="foot">页面每 5 分钟自动刷新 · <span id="clock"></span></div>
+        <div class="foot">Page refreshes automatically every 5 minutes · <span id="clock"></span></div>
     </div>
     <script>
         (function () {
@@ -107,13 +107,16 @@
                 var t = new Date(iso).getTime();
                 if (isNaN(t)) return iso;
                 var d = Math.max(0, Math.floor((Date.now() - t) / 1000));
-                if (d < 60) return d + " 秒前";
-                if (d < 3600) return Math.floor(d / 60) + " 分钟前";
+                function unit(n, name) {
+                    return n + " " + name + (n === 1 ? "" : "s");
+                }
+                if (d < 60) return unit(d, "second") + " ago";
+                if (d < 3600) return unit(Math.floor(d / 60), "minute") + " ago";
                 if (d < 86400) {
                     var h = Math.floor(d / 3600), m = Math.floor((d % 3600) / 60);
-                    return h + " 小时" + (m ? " " + m + " 分钟" : "") + "前";
+                    return unit(h, "hour") + (m ? " " + unit(m, "minute") : "") + " ago";
                 }
-                return Math.floor(d / 86400) + " 天前";
+                return unit(Math.floor(d / 86400), "day") + " ago";
             }
 
             var targets = ["first-seen", "last-seen"].map(function (id) {
@@ -127,7 +130,7 @@
                 });
                 var c = document.getElementById("clock");
                 if (c) {
-                    c.textContent = "当前 " + new Date().toLocaleString("zh-CN", { hour12: false });
+                    c.textContent = "Now " + new Date().toLocaleString("en-US", { hour12: false });
                 }
             }
 

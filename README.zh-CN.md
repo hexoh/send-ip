@@ -30,6 +30,9 @@ send-ip/
 ├── tools/
 │   ├── preview.py       # 用示例数据渲染页面快照，方便预览
 │   └── release.py       # 发版脚本：打 tag → 推送 → 由 CI 打包发布
+├── packaging/           # 中英文 README 模板，打包时复制进对应部署包
+│   ├── server-README.md
+│   └── client-README.md
 ├── .github/
 │   └── workflows/
 │       └── release.yml  # tag 触发：打包 + 建 GitHub Release

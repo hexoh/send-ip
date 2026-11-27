@@ -23,8 +23,8 @@ CST = timezone(timedelta(hours=8))
 
 
 def main():
-    parser = argparse.ArgumentParser(description="渲染模板快照用于预览")
-    parser.add_argument("--empty", action="store_true", help="渲染空状态（尚无 IP）")
+    parser = argparse.ArgumentParser(description="Render a template snapshot for preview")
+    parser.add_argument("--empty", action="store_true", help="Render the empty state (no IP yet)")
     parser.add_argument("--out", default=os.path.join(ROOT_DIR, "preview.html"))
     args = parser.parse_args()
 
@@ -46,7 +46,7 @@ def main():
     with open(args.out, "w", encoding="utf-8") as fh:
         fh.write(html)
 
-    print(f"已生成 {args.out}，用浏览器打开即可预览")
+    print(f"Generated {args.out}; open it in a browser to preview")
     return 0
 
 

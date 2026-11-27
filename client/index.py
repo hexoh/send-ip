@@ -61,29 +61,29 @@ def normalize_domain(raw):
         fixed = urlunsplit(
             (parts.scheme, parts.netloc, path.replace("receive_ip", "receive-ip"), parts.query, "")
         )
-        log.warning("检测到旧地址写法，已自动纠正为 %s（原为 %s）", fixed, url)
+        log.warning("Legacy address format detected; corrected to %s (was %s)", fixed, url)
         return fixed
     # Only append automatically when it clearly looks like a "base address", to avoid breaking custom routes
     if path.endswith("/"):
         new_path = path + RECEIVE_PATH
     else:
         log.warning(
-            "上报地址路径不是 /%s 结尾（%s），将按原样使用；"
-            "若收到 405/404，请确认地址形如 https://域名/%s",
+            "Reporting URL path does not end with /%s (%s); using it as-is. "
+            "If you get 405/404, make sure the URL looks like https://domain/%s",
             RECEIVE_PATH,
             path,
             RECEIVE_PATH,
         )
         return url
     fixed = urlunsplit((parts.scheme, parts.netloc, new_path, parts.query, ""))
-    log.warning("上报地址已自动补全为 %s（原为 %s）", fixed, url)
+    log.warning("Reporting URL auto-completed to %s (was %s)", fixed, url)
     return fixed
 
 
 def _handle_stop(signum, frame):
     global _running
     _running = False
-    log.info("收到信号 %s，准备退出", signum)
+    log.info("Received signal %s, shutting down", signum)
 
 
 def get_public_ip():
@@ -93,12 +93,12 @@ def get_public_ip():
             if resp.status_code == 200:
                 ip = resp.text.strip()
                 if ip:
-                    log.info("查询到公网 IP: %s (来源 %s)", ip, url)
+                    log.info("Public IP found: %s (source %s)", ip, url)
                     return ip
-            log.warning("查询 %s 返回状态码 %s", url, resp.status_code)
+            log.warning("Lookup %s returned status %s", url, resp.status_code)
         except requests.RequestException as exc:
-            log.warning("查询 %s 失败: %s", url, exc)
-    log.error("所有 IP 查询源均失败")
+            log.warning("Lookup %s failed: %s", url, exc)
+    log.error("All IP lookup sources failed")
     return None
 
 
@@ -125,7 +125,7 @@ def send_ip(ip, domain, token):
             # Some misconfigurations 301-redirect to the page and then return 200 HTML; do not treat that as success
             if not isinstance(payload, dict) or payload.get("success") is not True:
                 log.error(
-                    "上报失败：返回 200 但不是接口响应（很可能被重定向到了页面）。地址：%s",
+                    "Report failed: got 200 but not an API response (likely redirected to the page). URL: %s",
                     domain,
                 )
                 return False, None, code, "wrong_url"
@@ -133,8 +133,8 @@ def send_ip(ip, domain, token):
 
         if code == 405:
             log.error(
-                "上报失败：405 Method Not Allowed —— 地址填成了页面地址。"
-                "当前 %s，正确形式应为 %s/%s",
+                "Report failed: 405 Method Not Allowed - the URL points to the page. "
+                "Current %s, expected form %s/%s",
                 domain,
                 domain.rstrip("/"),
                 RECEIVE_PATH,
@@ -142,51 +142,51 @@ def send_ip(ip, domain, token):
             return False, None, code, "wrong_url"
         if code == 404:
             log.error(
-                "上报失败：404 Not Found —— 服务端没有该路由。检查 Nginx 是否代理了该路径前缀，"
-                "或地址是否为 %s/%s",
+                "Report failed: 404 Not Found - the server has no such route. Check whether Nginx proxies that path prefix, "
+                "or whether the URL is %s/%s",
                 domain.rstrip("/"),
                 RECEIVE_PATH,
             )
             return False, None, code, "notfound"
         if code == 401:
-            log.error("上报失败：401 —— 令牌不对，核对客户端的 --token 与服务端 APP_TOKEN")
+            log.error("Report failed: 401 - bad token; check that the client --token matches the server APP_TOKEN")
             return False, None, code, "auth"
 
-        log.error("上报失败，状态码 %s，响应 %s", code, resp.text[:200])
+        log.error("Report failed with status %s, response %s", code, resp.text[:200])
         return False, None, code, "other"
     except requests.RequestException as exc:
-        log.error("上报请求异常: %s", exc)
+        log.error("Report request error: %s", exc)
     return False, None, None, "other"
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="定时上报公网 IP 到服务端")
+    parser = argparse.ArgumentParser(description="Periodically report the public IP to the server")
     parser.add_argument(
         "--domain",
         default=os.environ.get("SENDIP_DOMAIN", ""),
-        help="服务端接收地址，如 https://ip.example.com/receive-ip"
-        "（若填成以 / 结尾的基础地址，会自动补上 receive-ip）",
+        help="Server receiving URL, e.g. https://ip.example.com/receive-ip "
+        "(a base URL ending in / gets receive-ip appended automatically)",
     )
     parser.add_argument(
         "--token",
         default=os.environ.get("SENDIP_TOKEN", ""),
-        help="与服务端一致的鉴权令牌",
+        help="Auth token matching the server",
     )
     parser.add_argument(
         "--interval",
         type=int,
         default=int(os.environ.get("SENDIP_INTERVAL", "3600")),
-        help="上报间隔秒数，默认 3600（1 小时）。家宽可 3600，需要更快发现变更可降到 600",
+        help="Reporting interval in seconds, defaults to 3600 (1 hour). Home broadband can use 3600; lower to 600 for faster change detection",
     )
     parser.add_argument(
-        "--once", action="store_true", help="只上报一次后退出，便于验证配置"
+        "--once", action="store_true", help="Report once and exit, useful for verifying the configuration"
     )
     args = parser.parse_args()
     if not args.domain:
-        parser.error("必须通过 --domain 或环境变量 SENDIP_DOMAIN 指定服务端地址")
+        parser.error("You must specify the server URL via --domain or the SENDIP_DOMAIN environment variable")
     args.domain = normalize_domain(args.domain)
     if args.interval < 60:
-        parser.error("--interval 不建议小于 60 秒，避免频繁请求公网 IP 查询服务")
+        parser.error("--interval should not be less than 60 seconds to avoid hammering the public IP lookup services")
     return args
 
 
@@ -196,10 +196,10 @@ def main():
     signal.signal(signal.SIGINT, _handle_stop)
 
     log.info(
-        "客户端启动: domain=%s interval=%ss token=%s",
+        "Client started: domain=%s interval=%ss token=%s",
         args.domain,
         args.interval,
-        "已配置" if args.token else "未配置",
+        "configured" if args.token else "not configured",
     )
 
     failures = 0
@@ -217,21 +217,21 @@ def main():
             if not ok and reason == "wrong_url" and not url_fixed:
                 candidate = domain.rstrip("/") + "/" + RECEIVE_PATH
                 if candidate != domain:
-                    log.warning("尝试用纠正后的地址重试: %s", candidate)
+                    log.warning("Retrying with corrected URL: %s", candidate)
                     ok, changed, code, reason = send_ip(ip, candidate, args.token)
                     if ok:
                         domain = candidate
                         url_fixed = True
                         log.warning(
-                            "地址已自动纠正并通过验证，请把配置改成 %s，下次启动即生效",
+                            "URL auto-corrected and verified; update the config to %s to apply it on next start",
                             candidate,
                         )
 
             if ok:
                 log.info(
-                    "上报成功: %s（%s）",
+                    "Report succeeded: %s (%s)",
                     ip,
-                    "IP 已变更" if changed else "心跳，IP 未变",
+                    "IP changed" if changed else "heartbeat, IP unchanged",
                 )
                 failures = 0
             else:
@@ -246,13 +246,13 @@ def main():
         sleep_for = args.interval
         if failures:
             sleep_for = min(args.interval * (2 ** min(failures, 4)), 1800)
-            log.info("连续失败 %s 次，%.0f 秒后重试", failures, sleep_for)
+            log.info("%s consecutive failures, retrying in %.0f seconds", failures, sleep_for)
 
         end_at = time.time() + sleep_for
         while _running and time.time() < end_at:
             time.sleep(min(1, max(0, end_at - time.time())))
 
-    log.info("客户端已退出")
+    log.info("Client stopped")
     return 0
 
 
