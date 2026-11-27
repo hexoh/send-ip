@@ -1,112 +1,117 @@
-# send-ip
+<h1 align="center">Send IP</h1>
 
-获取本地公网 IP，上报到自己的服务器并展示。客户端每小时查一次公网 IP 上报，服务端存库并提供网页查看。
-> 适用范围: 家庭宽带公网IP或者动态IP的服务器
+<p align="center">
+  <b>English</b> | <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-## 目录结构
+Fetch your public IP, report it to your own server, and view it on a web page. The client looks up the public IP and reports it once an hour; the server stores it in a database and serves a web page for viewing.
+> Scope: home broadband with a public IP, or servers with a dynamic IP.
+
+## Directory layout
 
 ```
 send-ip/
-├── server/              # 服务端：只部署到 VPS
-│   ├── app.py           # Flask 应用（/receive-ip 接收，/ 展示）
-│   ├── templates/       # 页面模板（Jinja2，需经 Flask 渲染）
+├── server/              # Server side: deploy only to a VPS
+│   ├── app.py           # Flask app (/receive-ip to receive, / to display)
+│   ├── templates/       # Page templates (Jinja2, rendered by Flask)
 │   ├── requirements.txt # Flask + gunicorn
-│   ├── .env.example     # 服务端环境变量示例（APP_TOKEN 等）
-│   ├── sendip.service   # systemd 单元
-│   ├── nginx.conf       # Nginx 反向代理配置
-│   └── Dockerfile       # 可选：容器化部署
-├── client/              # 客户端：只部署到被追踪 IP 的机器
-│   ├── index.py         # 定时查询并上报公网 IP
-│   ├── requirements.txt # requests（仅此一个依赖）
-│   ├── sendip-agent.service      # systemd 单元
-│   └── sendip-agent.env.example  # 环境变量示例（域名/令牌/间隔）
+│   ├── .env.example     # Server env var example (APP_TOKEN etc.)
+│   ├── sendip.service   # systemd unit
+│   ├── nginx.conf       # Nginx reverse proxy config
+│   └── Dockerfile       # Optional: containerized deployment
+├── client/              # Client side: deploy only to the machine whose IP is tracked
+│   ├── index.py         # Periodically queries and reports the public IP
+│   ├── requirements.txt # requests (the only dependency)
+│   ├── sendip-agent.service      # systemd unit
+│   └── sendip-agent.env.example  # Env var example (domain/token/interval)
 ├── docs/
-│   └── DEPLOY.md        # 完整部署指南（VPS + Nginx + HTTPS + systemd）
+│   └── DEPLOY.md        # Full deployment guide (VPS + Nginx + HTTPS + systemd)
 ├── tools/
-│   ├── preview.py       # 用示例数据渲染页面快照，方便预览
-│   └── release.py       # 发版脚本：打 tag → 推送 → 由 CI 打包发布
+│   ├── preview.py       # Render a page snapshot from sample data for preview
+│   └── release.py       # Release script: tag → push → CI builds and publishes
 ├── .github/
 │   └── workflows/
-│       └── release.yml  # tag 触发：打包 + 建 GitHub Release
-├── build.py             # 打包脚本：生成 dist/ 下的两个部署包
-├── dist/                # 打包输出（已 gitignore）
-└── README.md
+│       └── release.yml  # Triggered by tag: build + create GitHub Release
+├── build.py             # Packaging script: produces the two bundles under dist/
+├── dist/                # Build output (gitignored)
+├── README.md            # English (this file)
+└── README.zh-CN.md      # 简体中文
 ```
 
-两端代码完全独立，**部署时不需要拷全量**：
+The two sides are completely independent, so **you don't need to copy the whole repo when deploying**:
 
-| 端 | 最少需要的文件 |
+| Side | Minimum required files |
 |---|---|
-| 服务端（VPS） | `server/app.py`、`server/templates/index.html`、`server/requirements.txt` |
-| 客户端（Linux） | `client/index.py`、`client/requirements.txt` |
+| Server (VPS) | `server/app.py`, `server/templates/index.html`, `server/requirements.txt` |
+| Client (Linux) | `client/index.py`, `client/requirements.txt` |
 
-## 打包部署包
+## Building deployment bundles
 
-不想手动挑文件，直接跑：
+Don't want to pick files by hand? Just run:
 
 ```bash
-python3 build.py          # 生成 dist/send-ip-server 和 dist/send-ip-client
-python3 build.py --tar    # 顺便压成 tar.gz，方便 scp
-python3 build.py --version 1.2.3   # 指定版本号，写进包内 VERSION（默认取 git tag）
+python3 build.py          # produces dist/send-ip-server and dist/send-ip-client
+python3 build.py --tar    # also compress to tar.gz, handy for scp
+python3 build.py --version 1.2.3   # set the version, written to VERSION in each bundle (defaults to the git tag)
 ```
 
-打包时会把 `server/`、`client/` 的内容**拍平成部署时的实际布局**，并各附一份 `README.md`：
+Packaging **flattens** the contents of `server/` and `client/` into the actual deployment layout, and adds a `README.md` to each bundle:
 
-| 包 | 内容 | 部署到 |
+| Bundle | Contents | Deploy to |
 |---|---|---|
-| `dist/send-ip-server/` | `app.py`、`templates/`、`requirements.txt`、`.env.example`、`Dockerfile`、`VERSION`、`deploy/{sendip.service,nginx.conf}` | `/opt/send-ip` |
-| `dist/send-ip-client/` | `index.py`、`requirements.txt`、`VERSION`、`deploy/{sendip-agent.service,sendip-agent.env.example}` | `/opt/send-ip-agent` |
+| `dist/send-ip-server/` | `app.py`, `templates/`, `requirements.txt`, `.env.example`, `Dockerfile`, `VERSION`, `deploy/{sendip.service,nginx.conf}` | `/opt/send-ip` |
+| `dist/send-ip-client/` | `index.py`, `requirements.txt`, `VERSION`, `deploy/{sendip-agent.service,sendip-agent.env.example}` | `/opt/send-ip-agent` |
 
-## 发布新版本
+## Publishing a new version
 
-发版靠 **git tag 触发 GitHub Actions**：推一个 `v1.2.3` 的 tag，CI 自动打包两个部署包、算校验和、建 GitHub Release 并挂上附件。不用手动 `scp`。
+Releases are driven by **git tags triggering GitHub Actions**: push a `v1.2.3` tag and CI automatically builds both bundles, computes checksums, creates a GitHub Release and attaches the files. No manual `scp`.
 
-一条命令发版（推荐）：
+Release with one command (recommended):
 
 ```bash
-python3 tools/release.py 1.2.3           # 校验 + 试打包 + 打 tag + 推送
-python3 tools/release.py 1.2.3-rc1       # 预发布，Release 会标 prerelease
-python3 tools/release.py 1.2.3 --dry-run # 只体检，不动 git
+python3 tools/release.py 1.2.3           # validate + trial build + tag + push
+python3 tools/release.py 1.2.3-rc1       # pre-release, the Release is marked prerelease
+python3 tools/release.py 1.2.3 --dry-run # checks only, no git changes
 ```
 
-脚本会拦下这些坑：版本号格式不对、工作区有未提交改动（tag 内容会和本地代码不一致）、tag 本地或远端已存在、本地试打包失败。走完就能在 Actions 里看进度，跑完 Release 页面自动出现。
+The script guards against these pitfalls: a malformed version number, uncommitted changes in the working tree (the tag content would not match the local code), a tag that already exists locally or remotely, and a failing local trial build. Once it completes, you can watch progress in Actions; when it finishes, the Release page appears automatically.
 
-手动等价操作（不用脚本时）：
+Equivalent manual steps (without the script):
 
 ```bash
 git tag -a v1.2.3 -m "release v1.2.3"
 git push origin v1.2.3
 ```
 
-Release 附件：
+Release assets:
 
-| 附件 | 说明 |
+| Asset | Description |
 |---|---|
-| `send-ip-server-1.2.3.tar.gz` | 服务端，解压到 `/opt/send-ip` |
-| `send-ip-client-1.2.3.tar.gz` | 客户端，解压到 `/opt/send-ip-agent` |
-| `SHA256SUMS.txt` | 校验和，`sha256sum -c SHA256SUMS.txt` 验完整性 |
+| `send-ip-server-1.2.3.tar.gz` | Server side, extract to `/opt/send-ip` |
+| `send-ip-client-1.2.3.tar.gz` | Client side, extract to `/opt/send-ip-agent` |
+| `SHA256SUMS.txt` | Checksums, verify with `sha256sum -c SHA256SUMS.txt` |
 
-版本号规则：`vMAJOR.MINOR.PATCH`，带 `-rc1` / `-beta.2` 这类后缀会自动标成预发布。CI 会校验 tag 与包内 `VERSION` 一致、两个包的关键文件齐全，任何一步不对就失败，不会发出半个包。
+Version format: `vMAJOR.MINOR.PATCH`. Suffixes such as `-rc1` / `-beta.2` are automatically marked as pre-releases. CI verifies that the tag matches the `VERSION` inside the bundles and that the key files are present in both; if any step fails, the run fails, so no half-published release is produced.
 
-打包逻辑改坏了想重发同一个版本：Actions 页面选 `Release` → `Run workflow`，填已存在的 tag，会重新打包并覆盖同名 Release 的附件（不会新建 tag）。
+If you broke the packaging logic and want to re-publish the same version: on the Actions page choose `Release` → `Run workflow`, enter the existing tag, and it rebuilds and overwrites the assets of the same-named Release (no new tag is created).
 
-## 本地快速验证
+## Quick local test
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r server/requirements.txt
-.venv/bin/pip install -r client/requirements.txt   # 本机同时跑两端时两个都装
+.venv/bin/pip install -r client/requirements.txt   # install both when running both sides locally
 
-# 终端 1：启动服务端
+# Terminal 1: start the server
 APP_TOKEN=devtoken .venv/bin/python server/app.py
 
-# 终端 2：上报一次
+# Terminal 2: report once
 .venv/bin/python client/index.py --domain http://127.0.0.1:8000/receive-ip --token devtoken --once
 
-# 浏览器打开 http://127.0.0.1:8000 查看
+# Open http://127.0.0.1:8000 in a browser to view
 ```
 
-只想看页面长什么样（不起服务）：`.venv/bin/python tools/preview.py` 会生成 `preview.html`，
-加 `--empty` 可预览"尚未接收 IP"的空状态。
+Just want to see what the page looks like (without starting the server): `.venv/bin/python tools/preview.py` generates `preview.html`;
+add `--empty` to preview the "no IP received yet" empty state.
 
-生产部署见 [DEPLOY.md](docs/DEPLOY.md)。
+For production deployment see [DEPLOY.md](docs/DEPLOY.md).
