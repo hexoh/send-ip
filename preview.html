@@ -1,0 +1,265 @@
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Current Public IP</title>
+    <style>
+        :root { color-scheme: light; }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f6f7f9;
+            color: #1f2937;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                         "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        }
+        .card {
+            position: relative;
+            width: 100%;
+            max-width: 460px;
+            margin: 24px;
+            /* Extra top room so the switch in the corner never touches the centered label */
+            padding: 44px 28px 26px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            text-align: center;
+        }
+        .lang {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            gap: 2px;
+            padding: 2px;
+            background: #f3f4f6;
+            border-radius: 8px;
+        }
+        .lang button {
+            border: 0;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: transparent;
+            font: inherit;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #6b7280;
+            cursor: pointer;
+        }
+        .lang button.active {
+            background: #fff;
+            color: #111827;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+        }
+        .lang button:not(.active):hover { color: #111827; }
+        .lang button:focus-visible {
+            outline: 2px solid #93c5fd;
+            outline-offset: 1px;
+        }
+        .label {
+            font-size: 13px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #6b7280;
+        }
+        .ip {
+            margin: 14px 0 18px;
+            font-size: 31px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            word-break: break-all;
+            color: #111827;
+        }
+        /* Gray out when no IP has been received; toggle via a body class instead of putting Jinja inside CSS */
+        body.no-ip .ip { color: #9ca3af; }
+        .rows {
+            border-top: 1px solid #f0f1f3;
+            padding-top: 16px;
+            display: grid;
+            gap: 10px;
+            text-align: left;
+        }
+        .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 13px;
+        }
+        .row .k { color: #6b7280; flex: none; }
+        .row .v {
+            color: #374151;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+            word-break: break-all;
+        }
+        .dot {
+            display: inline-block;
+            width: 7px; height: 7px;
+            margin-right: 6px;
+            border-radius: 50%;
+            background: #10b981;
+            vertical-align: middle;
+        }
+        body.no-ip .dot { background: #d1d5db; }
+        .foot { margin-top: 20px; font-size: 12px; color: #9ca3af; }
+        /* Keep the timestamp on one line so a narrow card never splits the date */
+        #clock { white-space: nowrap; }
+    </style>
+</head>
+<body class="">
+    <div class="card">
+        <div class="lang" id="lang-switch" role="group" aria-label="Language">
+            <button type="button" data-lang="en" lang="en"
+                    aria-pressed="true"
+                    class="active">EN</button>
+            <button type="button" data-lang="zh" lang="zh-CN"
+                    aria-pressed="false"
+                    class="">中文</button>
+        </div>
+
+        <div class="label"><span class="dot"></span><span data-i18n="label">Current Public IP</span></div>
+        <div class="ip">203.0.113.55</div>
+
+        
+        <div class="rows">
+            <div class="row">
+                <span class="k" data-i18n="ipChangedAt">IP changed at</span>
+                <span class="v" id="first-seen" data-ts="2026-11-24T10:27:54+08:00">2026-11-24T10:27:54+08:00</span>
+            </div>
+            <div class="row">
+                <span class="k" data-i18n="lastHeartbeat">Last heartbeat</span>
+                <span class="v" id="last-seen" data-ts="2026-11-27T12:03:54+08:00">2026-11-27T12:03:54+08:00</span>
+            </div>
+        </div>
+        
+
+        <div class="foot"><span data-i18n="refresh">Page refreshes automatically every 5 minutes</span> · <span id="clock"></span></div>
+    </div>
+    <script>
+        (function () {
+            var I18N = {"en": {"ago": " ago", "day": "day", "hour": "hour", "ipChangedAt": "IP changed at", "label": "Current Public IP", "langLabel": "Language", "lastHeartbeat": "Last heartbeat", "minute": "minute", "noIp": "No IP received yet", "now": "Now ", "plural": "s", "refresh": "Page refreshes automatically every 5 minutes", "second": "second", "space": " ", "title": "Current Public IP", "waiting": "Waiting for the first client report"}, "zh": {"ago": "\u524d", "day": "\u5929", "hour": "\u5c0f\u65f6", "ipChangedAt": "IP \u53d8\u66f4\u65f6\u95f4", "label": "\u5f53\u524d\u516c\u7f51 IP", "langLabel": "\u8bed\u8a00", "lastHeartbeat": "\u6700\u8fd1\u5fc3\u8df3", "minute": "\u5206\u949f", "noIp": "\u5c1a\u672a\u6536\u5230 IP", "now": "\u73b0\u5728 ", "plural": "", "refresh": "\u9875\u9762\u6bcf 5 \u5206\u949f\u81ea\u52a8\u5237\u65b0", "second": "\u79d2", "space": " ", "title": "\u5f53\u524d\u516c\u7f51 IP", "waiting": "\u7b49\u5f85\u5ba2\u6237\u7aef\u9996\u6b21\u4e0a\u62a5"}};
+            var lang = "en";
+            var STORAGE_KEY = "sendip-lang";
+
+            // Accept "zh", "zh-CN", "en-US", ... and map them to a supported language.
+            function normalize(code) {
+                var v = (code || "").trim().toLowerCase();
+                if (v.indexOf("zh") === 0) return "zh";
+                if (v.indexOf("en") === 0) return "en";
+                return null;
+            }
+
+            // A ?lang= in the URL is an explicit request (a shared link) and wins over the
+            // remembered choice; otherwise reuse the previous choice, then the server's pick.
+            var fromUrl = null;
+            try {
+                fromUrl = normalize(new URLSearchParams(location.search).get("lang"));
+            } catch (e) { /* old browser or restricted context: fall through */ }
+
+            var saved = null;
+            try {
+                saved = normalize(localStorage.getItem(STORAGE_KEY));
+            } catch (e) { /* localStorage unavailable: keep the server-side language */ }
+
+            lang = fromUrl || saved || normalize(lang) || "en";
+
+            function strings() {
+                return I18N[lang];
+            }
+
+            function rel(iso) {
+                if (!iso) return "";
+                var ts = new Date(iso).getTime();
+                if (isNaN(ts)) return iso;
+                var s = strings();
+                var d = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+
+                // Same shape for both languages: "<n><space><unit><plural?>" + "ago".
+                // Chinese simply has an empty plural suffix, so "1 小时 30 分钟前" works too.
+                function unit(n, name) {
+                    return n + s.space + name + (n === 1 ? "" : s.plural);
+                }
+
+                if (d < 60) return unit(d, s.second) + s.ago;
+                if (d < 3600) return unit(Math.floor(d / 60), s.minute) + s.ago;
+                if (d < 86400) {
+                    var h = Math.floor(d / 3600), m = Math.floor((d % 3600) / 60);
+                    return unit(h, s.hour) + (m ? " " + unit(m, s.minute) : "") + s.ago;
+                }
+                return unit(Math.floor(d / 86400), s.day) + s.ago;
+            }
+
+            var targets = ["first-seen", "last-seen"].map(function (id) {
+                var el = document.getElementById(id);
+                return el && el.dataset.ts ? el : null;
+            }).filter(Boolean);
+
+            function update() {
+                targets.forEach(function (el) {
+                    el.textContent = rel(el.dataset.ts);
+                });
+                var c = document.getElementById("clock");
+                if (c) {
+                    var locale = lang === "zh" ? "zh-CN" : "en-US";
+                    c.textContent = strings().now +
+                        new Date().toLocaleString(locale, { hour12: false });
+                }
+            }
+
+            function apply() {
+                var s = strings();
+                document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+                document.title = s.title;
+                document.querySelectorAll("[data-i18n]").forEach(function (el) {
+                    var value = s[el.dataset.i18n];
+                    if (value != null) el.textContent = value;
+                });
+                var group = document.getElementById("lang-switch");
+                if (group) group.setAttribute("aria-label", s.langLabel);
+                document.querySelectorAll("#lang-switch button").forEach(function (btn) {
+                    var active = btn.dataset.lang === lang;
+                    btn.classList.toggle("active", active);
+                    btn.setAttribute("aria-pressed", active ? "true" : "false");
+                });
+                update();
+            }
+
+            // Sync ?lang= into the URL so the current view can be bookmarked or shared,
+            // and the 5-minute reload keeps showing the same language.
+            function remember(next) {
+                try { localStorage.setItem(STORAGE_KEY, next); } catch (e) { /* ignore */ }
+                try {
+                    var url = new URL(location.href);
+                    url.searchParams.set("lang", next);
+                    history.replaceState(null, "", url);
+                } catch (e) { /* file:// or an embedding page may block this; the view still switches */ }
+            }
+
+            document.querySelectorAll("#lang-switch button").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    if (btn.dataset.lang === lang) return;
+                    lang = btn.dataset.lang;
+                    remember(lang);
+                    apply();
+                });
+            });
+
+            apply();
+            // Recompute relative times every 30 seconds, otherwise it stays at "0 seconds ago"
+            setInterval(update, 30000);
+        })();
+        // Reload the whole page every 5 minutes to fetch the latest server data
+        setTimeout(function () { location.reload(); }, 300000);
+    </script>
+</body>
+</html>

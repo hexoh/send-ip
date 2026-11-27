@@ -5,6 +5,7 @@ Why: templates/index.html is a Jinja2 template, so opening it in a browser/edito
 
     python tools/preview.py            # write to preview.html
     python tools/preview.py --empty    # preview the "no IP received yet" empty state
+    python tools/preview.py --lang zh  # preview the Chinese version (the switch still works in the file)
 
 Note: timestamps in the snapshot are generated relative to the current time; they are for
 layout preview only and are not used by the live service.
@@ -25,6 +26,7 @@ CST = timezone(timedelta(hours=8))
 def main():
     parser = argparse.ArgumentParser(description="Render a template snapshot for preview")
     parser.add_argument("--empty", action="store_true", help="Render the empty state (no IP yet)")
+    parser.add_argument("--lang", choices=("en", "zh"), default="en", help="Page language (default: en)")
     parser.add_argument("--out", default=os.path.join(ROOT_DIR, "preview.html"))
     args = parser.parse_args()
 
@@ -41,7 +43,7 @@ def main():
         }
 
     with app.app_context():
-        html = render_template("index.html", **data)
+        html = render_template("index.html", lang=args.lang, **data)
 
     with open(args.out, "w", encoding="utf-8") as fh:
         fh.write(html)

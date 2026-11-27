@@ -115,7 +115,11 @@ APP_TOKEN=devtoken .venv/bin/python server/app.py
 # Open http://127.0.0.1:8000 in a browser to view
 ```
 
+The page has a **language switch** (top-right, EN / 中文). On the first visit it follows the
+browser's `Accept-Language`, and `?lang=zh` or `?lang=en` forces a language, which is handy for
+sharing a link. The choice is remembered in `localStorage`, so the automatic 5-minute refresh keeps it.
+
 Just want to see what the page looks like (without starting the server): `.venv/bin/python tools/preview.py` generates `preview.html`;
-add `--empty` to preview the "no IP received yet" empty state.
+add `--empty` to preview the "no IP received yet" empty state, and `--lang zh` to render the Chinese version.
 
 For production deployment see [DEPLOY.md](docs/DEPLOY.md).

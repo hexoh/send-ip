@@ -29,6 +29,9 @@ app = Flask(__name__)
 
 CST = timezone(timedelta(hours=8))
 
+SUPPORTED_LANGS = ("en", "zh")
+DEFAULT_LANG = "en"
+
 
 # --------------------------------------------------------------------------- #
 # Storage layer
@@ -142,9 +145,32 @@ def token_ok():
 # --------------------------------------------------------------------------- #
 # Routes
 # --------------------------------------------------------------------------- #
+def detect_lang():
+    """Pick the page language: ?lang= wins, then the browser's Accept-Language, then English."""
+    requested = (request.args.get("lang") or "").strip().lower()
+    if requested.startswith("zh"):
+        return "zh"
+    if requested.startswith("en"):
+        return "en"
+    return request.accept_languages.best_match(SUPPORTED_LANGS) or DEFAULT_LANG
+
+
 @app.route("/")
 def index():
-    return render_template("index.html", **load_last())
+    return render_template("index.html", lang=detect_lang(), **load_last())
+
+
+@app.after_request
+def no_shared_cache(response):
+    """The page body depends on Accept-Language / ?lang=, and the data is live.
+
+    Without Vary, a CDN or reverse proxy could serve the English page to Chinese visitors
+    (or a stale IP for hours), so keep it out of shared caches entirely.
+    """
+    if request.endpoint == "index":
+        response.headers["Vary"] = "Accept-Language"
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.route("/receive-ip", methods=["POST"])

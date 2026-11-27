@@ -55,6 +55,8 @@ This bundle contains only the files required by the server; extract it to /opt/s
       -d '{"ip_address":"1.2.3.4"}'
 
 Open the domain in a browser to see the IP; the page refreshes automatically every 5 minutes.
+The page follows the browser language (English / 简体中文) and has an EN / 中文 switch in the
+top-right corner; add `?lang=zh` or `?lang=en` to the URL to force one.
 
 ## Troubleshooting
 
@@ -119,7 +121,8 @@ Open the domain in a browser to see the IP; the page refreshes automatically eve
       -H "X-Auth-Token: 你的令牌" \\
       -d '{"ip_address":"1.2.3.4"}'
 
-浏览器打开域名即可看到 IP，页面每 5 分钟自动刷新。
+浏览器打开域名即可看到 IP，页面每 5 分钟自动刷新。页面跟随浏览器语言（英文 / 简体中文），
+右上角有 EN / 中文 切换；也可以在网址后加 `?lang=zh` 或 `?lang=en` 强制指定。
 
 ## 排错
 
