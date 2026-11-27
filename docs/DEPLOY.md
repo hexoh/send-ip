@@ -51,7 +51,7 @@ The repo serves two purposes in one, but **the two sides run completely separate
 ### Don't want to pick files by hand? One-command packaging
 
 ```bash
-python3 build.py          # produces dist/send-ip-server and dist/send-ip-client (each with .service / nginx.conf)
+python3 build.py          # produces dist/send-ip-server and dist/send-ip-client (each with .service / nginx.conf / bilingual README.md)
 python3 build.py --tar    # also compress to tar.gz, handy for scp
 ```
 
