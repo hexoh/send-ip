@@ -24,11 +24,10 @@ The server runs on a cloud host, receives the IP and displays it; the client run
 | POST | `/receive-ip` | Receive client reports | `X-Auth-Token` |
 | GET | `/api/last-ip` | Query the latest record (JSON) | `X-Auth-Token` or page session |
 | GET | `/healthz` | Health check | None |
-| POST | `/receive_ip` | **Legacy path, kept for compatibility only**, logs a WARNING | `X-Auth-Token` |
 
-> Paths use hyphens (`-`) rather than underscores, following URL conventions. The old `/receive_ip`
-> still works; once every client has been upgraded, delete the
-> `@app.route("/receive_ip", ...)` line in `server/app.py`.
+> Paths use hyphens (`-`) rather than underscores, following URL conventions. `/receive-ip` is the
+> only reporting path: the old underscore form `/receive_ip` has been removed and now returns 404,
+> so update any client config that still uses it.
 
 
 ## What each side needs (you don't copy everything)
@@ -351,7 +350,7 @@ Nginx and HTTPS are unchanged (still proxying to `127.0.0.1:8000`).
 | Browser can't open the home page | `systemctl status sendip`, `journalctl -u sendip -n 50`; `curl 127.0.0.1:8000/healthz` tells you whether it's the app or Nginx |
 | **Report returns 405** | **`--domain` points to the page URL**; it must end with `/receive-ip`. E.g. `https://hexoo.me/ip/` should be `https://hexoo.me/ip/receive-ip`. Newer clients auto-complete and retry, logging a WARNING |
 | Report returns 401 | The client's `--token` doesn't match `APP_TOKEN` in the server's `/etc/send-ip.env` (watch out for quotes and spaces) |
-| Report returns 404 | Nginx isn't proxying that path prefix, or `--domain` is missing a sub-path. First confirm the route exists with `curl -i -X POST domain/path/receive-ip` (should return 401, not 404) |
+| Report returns 404 | Nginx isn't proxying that path prefix, `--domain` is missing a sub-path, or it still uses the removed `/receive_ip` (hyphen, not underscore). First confirm the route exists with `curl -i -X POST domain/path/receive-ip` (should return 401, not 404) |
 | Report returns 502 | gunicorn isn't running, check `journalctl -u sendip` |
 | Log says "200 but not an API response" | The URL was 301-redirected to the page; again the `/receive-ip` suffix is missing |
 | Home page always shows "not received yet" | The client isn't running or hasn't reported successfully; `journalctl -u sendip-agent -f` |

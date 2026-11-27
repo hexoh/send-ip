@@ -380,10 +380,7 @@ def no_shared_cache(response):
 
 
 @app.route("/receive-ip", methods=["POST"])
-@app.route("/receive_ip", methods=["POST"])  # Legacy route kept for compatibility; remove this line once no old clients remain
-def receive_ip():
-    if request.path.rstrip("/").endswith("receive_ip"):
-        log.warning("Received a request on legacy /receive_ip; handled for compatibility. Please update the client to /receive-ip")
+def receive_report():
     if not token_ok():
         log.warning("Authentication failed from %s", request.remote_addr)
         return jsonify(success=False, error="unauthorized"), 401

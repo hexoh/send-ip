@@ -56,13 +56,6 @@ def normalize_domain(raw):
     path = parts.path or "/"
     if path.rstrip("/").endswith(RECEIVE_PATH):
         return url
-    # Automatically correct the legacy underscore address receive_ip to receive-ip
-    if path.rstrip("/").endswith("receive_ip"):
-        fixed = urlunsplit(
-            (parts.scheme, parts.netloc, path.replace("receive_ip", "receive-ip"), parts.query, "")
-        )
-        log.warning("Legacy address format detected; corrected to %s (was %s)", fixed, url)
-        return fixed
     # Only append automatically when it clearly looks like a "base address", to avoid breaking custom routes
     if path.endswith("/"):
         new_path = path + RECEIVE_PATH
@@ -143,7 +136,7 @@ def send_ip(ip, domain, token):
         if code == 404:
             log.error(
                 "Report failed: 404 Not Found - the server has no such route. Check whether Nginx proxies that path prefix, "
-                "or whether the URL is %s/%s",
+                "or whether the URL is %s/%s (hyphen, not receive_ip)",
                 domain.rstrip("/"),
                 RECEIVE_PATH,
             )

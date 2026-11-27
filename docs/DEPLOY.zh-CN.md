@@ -24,10 +24,9 @@
 | POST | `/receive-ip` | 接收客户端上报 | `X-Auth-Token` |
 | GET | `/api/last-ip` | 查询最新记录（JSON） | `X-Auth-Token` 或页面会话 |
 | GET | `/healthz` | 健康检查 | 无 |
-| POST | `/receive_ip` | **旧地址，仅兼容保留**，会打 WARNING | `X-Auth-Token` |
 
-> 路径统一用连字符（`-`）而不是下划线，符合 URL 惯例。旧的 `/receive_ip` 目前仍可用，
-> 确认所有客户端都升级后，把 `server/app.py` 里那行 `@app.route("/receive_ip", ...)` 删掉即可。
+> 路径统一用连字符（`-`）而不是下划线，符合 URL 惯例。上报地址只有 `/receive-ip` 一个，
+> 旧的 `/receive_ip` 已移除（现在返回 404），客户端配置里还写着下划线的需要改掉。
 
 
 ## 两端分别需要拷什么（不用拷全部）
@@ -351,7 +350,7 @@ Nginx 和 HTTPS 部分不变（仍然反代到 `127.0.0.1:8000`）。
 | 浏览器打不开首页 | `systemctl status sendip`、`journalctl -u sendip -n 50`；`curl 127.0.0.1:8000/healthz` 区分是应用还是 Nginx 问题 |
 | **上报返回 405** | **`--domain` 填成了页面地址**，必须带 `/receive-ip` 后缀。例：`https://hexoo.me/ip/` 应写作 `https://hexoo.me/ip/receive-ip`。新版客户端会自动补全并重试，日志里会有 WARNING 提示 |
 | 上报返回 401 | 客户端 `--token` 与服务端 `/etc/send-ip.env` 的 `APP_TOKEN` 不一致（注意别带引号和空格） |
-| 上报返回 404 | Nginx 没代理该路径前缀，或 `--domain` 少了子路径。先用 `curl -i -X POST 域名/路径/receive-ip` 确认路由存在（应返回 401 而非 404） |
+| 上报返回 404 | Nginx 没代理该路径前缀、`--domain` 少了子路径，或者仍写着已移除的 `/receive_ip`（要用连字符）。先用 `curl -i -X POST 域名/路径/receive-ip` 确认路由存在（应返回 401 而非 404） |
 | 上报返回 502 | gunicorn 没起来，看 `journalctl -u sendip` |
 | 日志报"200 但不是接口响应" | 地址被 301 跳转到了页面，同样缺 `/receive-ip` 后缀 |
 | 首页一直是"尚未接收到" | 客户端没跑起来或没上报成功，`journalctl -u sendip-agent -f` |
