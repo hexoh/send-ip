@@ -1,13 +1,13 @@
 name: Release
 
-# 打 tag 即发版：推送 v1.2.3 这样的 tag 会触发打包 + 建 GitHub Release。
-# 本地发版用：python3 tools/release.py 1.2.3
+# Tagging publishes a release: pushing a tag like v1.2.3 triggers packaging + GitHub Release creation.
+# Local release: python3 tools/release.py 1.2.3
 
 on:
   push:
     tags:
       - 'v[0-9]*'
-  # 手动重跑：修复打包问题后，对已存在的 tag 重新生成附件并覆盖同名 Release
+  # Manual re-run: after fixing packaging issues, rebuild attachments for an existing tag and overwrite the same-named Release
   workflow_dispatch:
     inputs:
       tag:
@@ -20,7 +20,7 @@ run-name: Release ${{ inputs.tag || github.ref_name }}
 permissions:
   contents: write
 
-# 同一个 tag 同时只跑一个任务，避免并发覆盖附件
+# Only one job per tag at a time, to avoid concurrent attachment overwrites
 concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
@@ -90,7 +90,7 @@ jobs:
           for pkg in send-ip-server send-ip-client; do
             tar_file="dist/${pkg}.tar.gz"
             test -f "$tar_file" || { echo "::error::缺少 $tar_file"; exit 1; }
-            # 包内版本号必须与 tag 一致
+            # Bundled version must match the tag
             echo "--- ${pkg} 内容 ---"
             tar -tzf "$tar_file"
             packaged="$(tar -xzOf "$tar_file" "${pkg}/VERSION" | tr -d '\r\n')"
@@ -100,7 +100,7 @@ jobs:
             fi
           done
 
-          # 关键文件必须真的在包里（防止 build.py 清单被改坏）
+          # Key files must actually be in the bundle (guard against a broken build.py manifest)
           tar -tzf dist/send-ip-server.tar.gz | grep -qx 'send-ip-server/app.py'
           tar -tzf dist/send-ip-server.tar.gz | grep -qx 'send-ip-server/templates/index.html'
           tar -tzf dist/send-ip-server.tar.gz | grep -qx 'send-ip-server/requirements.txt'

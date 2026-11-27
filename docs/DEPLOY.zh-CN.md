@@ -51,7 +51,7 @@
 ### 不想手动挑文件？一键打包
 
 ```bash
-python3 build.py          # 生成 dist/send-ip-server 和 dist/send-ip-client（各自带 .service / nginx.conf / README.md）
+python3 build.py          # 生成 dist/send-ip-server 和 dist/send-ip-client（各自带 .service / nginx.conf）
 python3 build.py --tar    # 额外压成 tar.gz，方便 scp
 ```
 

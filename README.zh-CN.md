@@ -56,7 +56,7 @@ python3 build.py --tar    # 顺便压成 tar.gz，方便 scp
 python3 build.py --version 1.2.3   # 指定版本号，写进包内 VERSION（默认取 git tag）
 ```
 
-打包时会把 `server/`、`client/` 的内容**拍平成部署时的实际布局**，并各附一份 `README.md`：
+打包时会把 `server/`、`client/` 的内容**拍平成部署时的实际布局**（不会附带 `README.md`）：
 
 | 包 | 内容 | 部署到 |
 |---|---|---|

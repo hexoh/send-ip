@@ -1,20 +1,20 @@
 [Unit]
-Description=send-ip agent (定时上报本机公网 IP)
+Description=Send IP Agent
 Documentation=https://github.com/hexoh/send-ip
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-# 按实际运行用户修改，root 也可以但建议用普通用户
+# Change to the actual runtime user; root also works but a normal user is recommended
 User=nobody
 Group=nogroup
 WorkingDirectory=/opt/send-ip-agent
 
 EnvironmentFile=/etc/send-ip-agent.env
-# /etc/send-ip-agent.env 内容示例：
+# Example /etc/send-ip-agent.env contents:
 #   SENDIP_DOMAIN=https://ip.example.com/receive-ip
-#   SENDIP_TOKEN=换成你的令牌
+#   SENDIP_TOKEN=replace-with-your-token
 #   SENDIP_INTERVAL=3600
 
 ExecStart=/opt/send-ip-agent/.venv/bin/python /opt/send-ip-agent/index.py

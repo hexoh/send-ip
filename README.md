@@ -56,7 +56,7 @@ python3 build.py --tar    # also compress to tar.gz, handy for scp
 python3 build.py --version 1.2.3   # set the version, written to VERSION in each bundle (defaults to the git tag)
 ```
 
-Packaging **flattens** the contents of `server/` and `client/` into the actual deployment layout, and adds a `README.md` to each bundle:
+Packaging **flattens** the contents of `server/` and `client/` into the actual deployment layout (no `README.md` is added):
 
 | Bundle | Contents | Deploy to |
 |---|---|---|

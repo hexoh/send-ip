@@ -1,12 +1,14 @@
-"""公网 IP 上报客户端。
+"""Public IP reporting client.
 
-放在需要被追踪 IP 的机器上常驻运行：默认每小时查询一次本机公网 IP 并上报给服务端。
-家宽 IP 一般只在 PPPoE 重拨/设备重启时变化，1 小时足够；要更快发现变更可降到 600 秒。
+Run it persistently on the machine whose IP should be tracked: by default it looks up the
+local public IP once an hour and reports it to the server. Home broadband IPs usually only
+change on PPPoE re-dial or device reboot, so 1 hour is enough; lower it to 600 seconds if
+you need to detect changes faster.
 
-用法：
+Usage:
     python index.py --domain https://ip.example.com/receive-ip --token <TOKEN> --interval 3600
 
-也可以用环境变量 SENDIP_DOMAIN / SENDIP_TOKEN / SENDIP_INTERVAL 配置。
+Can also be configured with the SENDIP_DOMAIN / SENDIP_TOKEN / SENDIP_INTERVAL environment variables.
 """
 
 import argparse
@@ -25,7 +27,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("sendip-agent")
 
-# 多个查 IP 源，按顺序兜底，避免单一服务挂掉就上报失败
+# Multiple IP lookup sources, tried in order as fallbacks so one dead service cannot break reporting
 IP_LOOKUP_URLS = (
     "https://ipinfo.io/ip",
     "https://api.ipify.org",
@@ -34,17 +36,18 @@ IP_LOOKUP_URLS = (
 
 TIMEOUT = 10
 
-# 服务端接收上报的路由
+# Route on the server that receives reports
 RECEIVE_PATH = "receive-ip"
 
 _running = True
 
 
 def normalize_domain(raw):
-    """把用户填的地址规范成真正的上报地址。
+    """Normalize the user-provided address into the actual reporting URL.
 
-    最容易踩的坑是填成页面地址（如 https://ip.example.com/ip/），
-    那样 POST 到页面路由会得到 405。这里把"以 / 结尾的基础地址"自动补上 receive-ip。
+    The most common mistake is entering the page address (e.g. https://ip.example.com/ip/),
+    which returns 405 when POSTed to the page route. Here a "base address ending in /" gets
+    receive-ip appended automatically.
     """
     url = (raw or "").strip()
     if not url:
@@ -53,14 +56,14 @@ def normalize_domain(raw):
     path = parts.path or "/"
     if path.rstrip("/").endswith(RECEIVE_PATH):
         return url
-    # 旧版下划线地址 receive_ip 自动纠正成 receive-ip
+    # Automatically correct the legacy underscore address receive_ip to receive-ip
     if path.rstrip("/").endswith("receive_ip"):
         fixed = urlunsplit(
             (parts.scheme, parts.netloc, path.replace("receive_ip", "receive-ip"), parts.query, "")
         )
         log.warning("检测到旧地址写法，已自动纠正为 %s（原为 %s）", fixed, url)
         return fixed
-    # 只有明显是"基础地址"时才自动补，避免破坏自定义路由
+    # Only append automatically when it clearly looks like a "base address", to avoid breaking custom routes
     if path.endswith("/"):
         new_path = path + RECEIVE_PATH
     else:
@@ -100,10 +103,10 @@ def get_public_ip():
 
 
 def send_ip(ip, domain, token):
-    """上报一次。
+    """Report once.
 
-    返回 (是否成功, IP 是否变更, HTTP 状态码, 失败原因)。
-    失败原因取值：wrong_url / notfound / auth / other / None。
+    Returns (success, ip_changed, http_status, failure_reason).
+    failure_reason values: wrong_url / notfound / auth / other / None.
     """
     headers = {"Content-Type": "application/json"}
     if token:
@@ -119,7 +122,7 @@ def send_ip(ip, domain, token):
                 payload = resp.json()
             except ValueError:
                 payload = None
-            # 有些错配会 301 跳到页面，跟随后拿到 200 HTML，不能当成功
+            # Some misconfigurations 301-redirect to the page and then return 200 HTML; do not treat that as success
             if not isinstance(payload, dict) or payload.get("success") is not True:
                 log.error(
                     "上报失败：返回 200 但不是接口响应（很可能被重定向到了页面）。地址：%s",
@@ -206,11 +209,11 @@ def main():
     while _running:
         ip = get_public_ip()
         if ip:
-            # 每小时都上报一次（心跳），服务端据此判断客户端是否存活；
-            # IP 未变时服务端只刷新 last_seen，不会翻新 IP 变更时间。
+            # Report every hour (heartbeat) so the server can tell whether the client is alive;
+            # when the IP is unchanged the server only refreshes last_seen and does not bump the IP change time.
             ok, changed, code, reason = send_ip(ip, domain, args.token)
 
-            # 地址指向了页面（405 或被重定向成 200 HTML），自动补 receive-ip 重试一次
+            # The address pointed at the page (405 or redirected to 200 HTML); append receive-ip and retry once
             if not ok and reason == "wrong_url" and not url_fixed:
                 candidate = domain.rstrip("/") + "/" + RECEIVE_PATH
                 if candidate != domain:
@@ -239,7 +242,7 @@ def main():
         if args.once:
             break
 
-        # 连续失败时逐步拉长间隔，最长 30 分钟，避免把服务端/查询源打爆
+        # On consecutive failures, back off progressively up to 30 minutes to avoid hammering the server/lookup sources
         sleep_for = args.interval
         if failures:
             sleep_for = min(args.interval * (2 ** min(failures, 4)), 1800)

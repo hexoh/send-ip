@@ -1,11 +1,11 @@
-"""IP 接收与展示服务端。
+"""IP receiving and display server.
 
-接收客户端 POST 上来的公网 IP 并持久化（SQLite），首页展示最后一次上报结果。
+Receives the public IP POSTed by clients and persists it (SQLite); the home page shows the latest report.
 
-环境变量：
-    APP_TOKEN   鉴权令牌，客户端需在请求头 X-Auth-Token 中携带。留空则不校验（仅本机调试用）
-    DB_PATH     SQLite 文件路径，默认 ./data/ips.db
-    PORT        监听端口，默认 8000（仅直接运行本文件时生效）
+Environment variables:
+    APP_TOKEN   Auth token; clients must send it in the X-Auth-Token header. Leave empty to disable checks (local debugging only)
+    DB_PATH     SQLite file path, defaults to ./data/ips.db
+    PORT        Listen port, defaults to 8000 (only used when running this file directly)
 """
 
 import logging
@@ -31,10 +31,10 @@ CST = timezone(timedelta(hours=8))
 
 
 # --------------------------------------------------------------------------- #
-# 存储层
+# Storage layer
 # --------------------------------------------------------------------------- #
 def get_db():
-    """建立连接并确保表存在。SQLite 支持多进程/多线程读，gunicorn 多 worker 下可用。"""
+    """Open a connection and ensure the table exists. SQLite supports multi-process/threaded reads, so it works with multiple gunicorn workers."""
     db_dir = os.path.dirname(DB_PATH)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
@@ -49,7 +49,7 @@ def get_db():
         )
         """
     )
-    # 兼容早期的单列 updated_at 结构：重建表但保留最后一条 IP，避免升级后页面变空
+    # Compatible with the early single-column updated_at schema: rebuild the table but keep the last IP so the page does not go blank after upgrade
     cols = {row[1] for row in conn.execute("PRAGMA table_info(ip_record)")}
     if "last_seen" not in cols:
         old = None
@@ -79,10 +79,10 @@ def get_db():
 
 
 def save_ip(ip):
-    """记录一次上报。
+    """Record one report.
 
-    IP 变化时换新记录并重置 first_seen；IP 未变只刷新 last_seen（心跳）。
-    只保留最新一条，避免表膨胀。
+    When the IP changes, insert a new record and reset first_seen; when unchanged, only refresh
+    last_seen (heartbeat). Keep only the latest row to prevent table growth.
     """
     now = datetime.now(CST).isoformat(timespec="seconds")
     conn = get_db()
@@ -130,7 +130,7 @@ def load_last():
 
 
 # --------------------------------------------------------------------------- #
-# 鉴权
+# Authentication
 # --------------------------------------------------------------------------- #
 def token_ok():
     if not APP_TOKEN:
@@ -140,7 +140,7 @@ def token_ok():
 
 
 # --------------------------------------------------------------------------- #
-# 路由
+# Routes
 # --------------------------------------------------------------------------- #
 @app.route("/")
 def index():
@@ -148,7 +148,7 @@ def index():
 
 
 @app.route("/receive-ip", methods=["POST"])
-@app.route("/receive_ip", methods=["POST"])  # 兼容旧地址，确认没有旧客户端后删掉这一行
+@app.route("/receive_ip", methods=["POST"])  # Legacy route kept for compatibility; remove this line once no old clients remain
 def receive_ip():
     if request.path.rstrip("/").endswith("receive_ip"):
         log.warning("收到旧地址 /receive_ip 的请求，已自动兼容，请把客户端改为 /receive-ip")
@@ -185,5 +185,5 @@ def healthz():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
-    # 0.0.0.0 才能被容器外部或反向代理访问；生产环境建议用 gunicorn 启动
+    # 0.0.0.0 is required for access from outside the container or through a reverse proxy; gunicorn is recommended in production
     app.run(host="0.0.0.0", port=port, debug=False)

@@ -1,12 +1,13 @@
-"""用示例数据渲染 templates/index.html，生成可直接预览的静态快照。
+"""Render templates/index.html with sample data to produce a static snapshot that can be previewed directly.
 
-用途：templates/index.html 是 Jinja2 模板，直接用浏览器/编辑器预览会看到
-未渲染的 {{ }} 和 {% %}。想预览真实效果时运行本脚本：
+Why: templates/index.html is a Jinja2 template, so opening it in a browser/editor shows raw
+{{ }} and {% %}. Run this script when you want to preview the real output:
 
-    python tools/preview.py            # 输出到 preview.html
-    python tools/preview.py --empty    # 预览"尚未接收 IP"的空状态
+    python tools/preview.py            # write to preview.html
+    python tools/preview.py --empty    # preview the "no IP received yet" empty state
 
-注意：快照里的时间是相对当前时间生成的，仅供看版式，不参与线上服务。
+Note: timestamps in the snapshot are generated relative to the current time; they are for
+layout preview only and are not used by the live service.
 """
 
 import argparse

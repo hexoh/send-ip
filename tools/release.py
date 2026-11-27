@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""发版脚本：打 tag 并推送，由 GitHub Actions 自动打包 + 建 Release。
+"""Release script: create and push a tag; GitHub Actions handles packaging and creating the Release.
 
-用法：
-    python3 tools/release.py 1.2.3              # 正式版
-    python3 tools/release.py 1.2.3-rc1          # 预发布（Release 会标记 prerelease）
-    python3 tools/release.py 1.2.3 --dry-run    # 只体检 + 试打包，不动 git
-    python3 tools/release.py 1.2.3 -m "修复 x"  # 自定义 tag 说明
-    python3 tools/release.py 1.2.3 --skip-build # 跳过本地试打包
-    python3 tools/release.py 1.2.3 --no-push    # 只创建本地 tag，不推送
+Usage:
+    python3 tools/release.py 1.2.3              # stable release
+    python3 tools/release.py 1.2.3-rc1          # pre-release (the Release is marked prerelease)
+    python3 tools/release.py 1.2.3 --dry-run    # checks + trial build only, no git changes
+    python3 tools/release.py 1.2.3 -m "fix x"   # custom tag message
+    python3 tools/release.py 1.2.3 --skip-build # skip the local trial build
+    python3 tools/release.py 1.2.3 --no-push    # create the local tag only, do not push
 
-脚本做的事：
-    1. 校验版本号格式、工作区是否干净、tag 是否已存在
-    2. 本地跑一遍 build.py 试打包，确认两个包能生成且版本号正确
-    3. git tag -a v1.2.3 → 推送 tag → CI 自动建 Release
+What the script does:
+    1. Validate the version format, a clean working tree, and that the tag does not already exist
+    2. Run build.py locally as a trial build to confirm both bundles build with the right version
+    3. git tag -a v1.2.3 -> push the tag -> CI creates the Release automatically
 
-只用标准库。
+Standard library only.
 """
 
 import argparse
@@ -36,7 +36,7 @@ class ReleaseError(Exception):
 
 
 def run(cmd, check=True, capture=True, cwd=BASE_DIR):
-    """跑一条命令，失败时抛 ReleaseError 并带上 stderr。"""
+    """Run a command; on failure raise ReleaseError with stderr attached."""
     try:
         proc = subprocess.run(
             cmd,
@@ -65,7 +65,7 @@ def out(*args):
 
 
 def parse_version(raw):
-    """接受 1.2.3 / v1.2.3 / 1.2.3-rc1，返回 (version, is_prerelease)。"""
+    """Accept 1.2.3 / v1.2.3 / 1.2.3-rc1 and return (version, is_prerelease)."""
     text = (raw or "").strip()
     if text.startswith("v"):
         text = text[1:]
@@ -124,7 +124,7 @@ def check_tag_free(tag):
 
 
 def warn_if_not_latest(version):
-    """版本号比已有 tag 小时提醒一下，不阻断（可能要补发老版本）。"""
+    """Warn (without blocking) when the version is lower than an existing tag, since a backport may be intentional."""
     tags = git("tag", "--list", "v[0-9]*", check=False).stdout.split()
     valid = [t[1:] for t in tags if VERSION_RE.match(t[1:])] if tags else []
     if not valid:
@@ -135,7 +135,7 @@ def warn_if_not_latest(version):
 
 
 def trial_build(version):
-    """本地跑一遍打包，提前暴露缺文件、清单写错之类的问题。"""
+    """Run a local trial build to surface missing files, bad manifests, and similar problems early."""
     proc = run(
         [sys.executable, os.path.join(BASE_DIR, "build.py"), "--tar", "--version", version],
         check=False,
@@ -149,7 +149,7 @@ def trial_build(version):
         tar_path = os.path.join(dist, f"{pkg}.tar.gz")
         if not os.path.isfile(tar_path):
             raise ReleaseError(f"试打包缺少 {tar_path}")
-        # 包内 VERSION 必须和要发的版本一致，避免 CI 里才发现
+        # The bundled VERSION must match the version being released, to catch problems before CI
         ver = run(
             ["tar", "-xzOf", tar_path, f"{pkg}/VERSION"], check=False
         )
@@ -167,7 +167,7 @@ def create_tag(tag, message, dry_run):
 
 
 def push_everything(tag, branch, upstream, dry_run):
-    """先推分支（保证代码在远端），再推 tag（触发 CI）。"""
+    """Push the branch first (ensure the code is on the remote), then push the tag (which triggers CI)."""
     if dry_run:
         if upstream:
             print(f"{OK} [dry-run] 将执行 git push（{branch} → {upstream}）")
@@ -202,7 +202,7 @@ def repo_url():
     if remote.returncode != 0:
         return None
     url = remote.stdout.strip()
-    # git@github.com:owner/repo.git 或 https://github.com/owner/repo.git
+    # git@github.com:owner/repo.git or https://github.com/owner/repo.git
     m = re.search(r"github\.com[:/]([^/]+)/([^/\s]+?)(?:\.git)?$", url)
     if not m:
         return None

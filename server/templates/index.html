@@ -44,7 +44,7 @@
             word-break: break-all;
             color: #111827;
         }
-        /* 未收到 IP 时置灰，用 body 类切换，避免把 Jinja 写进 CSS 里 */
+        /* Gray out when no IP has been received; toggle via a body class instead of putting Jinja inside CSS */
         body.no-ip .ip { color: #9ca3af; }
         .rows {
             border-top: 1px solid #f0f1f3;
@@ -132,10 +132,10 @@
             }
 
             update();
-            // 相对时间每 30 秒重算，否则会一直停在“0 秒前”
+            // Recompute relative times every 30 seconds, otherwise it stays at "0 seconds ago"
             setInterval(update, 30000);
         })();
-        // 整页每 5 分钟刷新一次，抓取服务端最新数据
+        // Reload the whole page every 5 minutes to fetch the latest server data
         setTimeout(function () { location.reload(); }, 300000);
     </script>
 </body>
