@@ -1,7 +1,8 @@
-# 服务端容器镜像（可选方案，不想装 systemd 服务时用）
-# 构建: docker build -t send-ip .
-# 运行: docker run -d --name send-ip -p 127.0.0.1:8000:8000 \
-#          -e APP_TOKEN=你的令牌 -v sendip-data:/data send-ip
+# Server container image (optional alternative when you do not want to install a systemd service)
+# Build: docker build -t send-ip .
+# Run:   docker run -d --name send-ip -p 127.0.0.1:8000:8000 \
+#          -e APP_TOKEN=your-token -e APP_PASSWORD=your-page-password \
+#          -v sendip-data:/data send-ip
 
 FROM python:3.13-slim
 

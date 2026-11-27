@@ -1,12 +1,16 @@
-"""用示例数据渲染 templates/index.html，生成可直接预览的静态快照。
+"""Render templates/index.html with sample data to produce a static snapshot that can be previewed directly.
 
-用途：templates/index.html 是 Jinja2 模板，直接用浏览器/编辑器预览会看到
-未渲染的 {{ }} 和 {% %}。想预览真实效果时运行本脚本：
+Why: templates/index.html is a Jinja2 template, so opening it in a browser/editor shows raw
+{{ }} and {% %}. Run this script when you want to preview the real output:
 
-    python tools/preview.py            # 输出到 preview.html
-    python tools/preview.py --empty    # 预览"尚未接收 IP"的空状态
+    python tools/preview.py            # write to ui/preview.html
+    python tools/preview.py --empty    # preview the "no IP received yet" empty state
+    python tools/preview.py --lang zh  # preview the Chinese version (the switch still works in the file)
+    python tools/preview.py --login    # write to ui/preview-login.html (the password prompt)
+    python tools/preview.py --login --error  # preview the wrong-password error state
 
-注意：快照里的时间是相对当前时间生成的，仅供看版式，不参与线上服务。
+Note: timestamps in the snapshot are generated relative to the current time; they are for
+layout preview only and are not used by the live service.
 """
 
 import argparse
@@ -18,19 +22,25 @@ from flask import Flask, render_template
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATE_DIR = os.path.join(ROOT_DIR, "server", "templates")
+UI_DIR = os.path.join(ROOT_DIR, "ui")
 CST = timezone(timedelta(hours=8))
 
 
 def main():
-    parser = argparse.ArgumentParser(description="渲染模板快照用于预览")
-    parser.add_argument("--empty", action="store_true", help="渲染空状态（尚无 IP）")
-    parser.add_argument("--out", default=os.path.join(ROOT_DIR, "preview.html"))
+    parser = argparse.ArgumentParser(description="Render a template snapshot for preview")
+    parser.add_argument("--empty", action="store_true", help="Render the empty state (no IP yet)")
+    parser.add_argument("--login", action="store_true", help="Render the password prompt (APP_PASSWORD set)")
+    parser.add_argument("--error", action="store_true", help="With --login: also show the wrong-password message")
+    parser.add_argument("--lang", choices=("en", "zh"), default="en", help="Page language (default: en)")
+    parser.add_argument("--out", default=None, help="Output path (default: ui/preview.html, ui/preview-login.html with --login)")
     args = parser.parse_args()
+
+    out = args.out or os.path.join(UI_DIR, "preview-login.html" if args.login else "preview.html")
 
     app = Flask(__name__, template_folder=TEMPLATE_DIR)
     now = datetime.now(CST)
 
-    if args.empty:
+    if args.login or args.empty:
         data = {"ip": None, "first_seen": None, "last_seen": None}
     else:
         data = {
@@ -40,12 +50,19 @@ def main():
         }
 
     with app.app_context():
-        html = render_template("index.html", **data)
+        html = render_template(
+            "index.html",
+            lang=args.lang,
+            authed=not args.login,
+            error="wrongPassword" if (args.login and args.error) else None,
+            **data,
+        )
 
-    with open(args.out, "w", encoding="utf-8") as fh:
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    with open(out, "w", encoding="utf-8") as fh:
         fh.write(html)
 
-    print(f"已生成 {args.out}，用浏览器打开即可预览")
+    print(f"Generated {out}; open it in a browser to preview")
     return 0
 
 

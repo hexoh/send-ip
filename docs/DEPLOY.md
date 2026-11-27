@@ -1,164 +1,188 @@
-# 部署指南
+<h1 align="center">Deployment Guide</h1>
 
-服务端跑在云服务器上接收 IP 并展示，客户端跑在要被追踪 IP 的 Linux 机器上定时上报。
+<p align="center">
+  <b>English</b> | <a href="DEPLOY.zh-CN.md">简体中文</a>
+</p>
+
+The server runs on a cloud host, receives the IP and displays it; the client runs on the Linux machine whose IP you want to track and reports on a schedule.
 
 ```
 ┌────────────────────┐   POST /receive-ip    ┌──────────────────────────────┐
-│  客户端 index.py    │  {"ip_address":"..."} │  VPS: Nginx(443) → gunicorn  │
-│  家宽 Linux 机器     │ ────────────────────► │  Flask app.py → SQLite       │
-│  systemd 常驻        │   X-Auth-Token        │  浏览器打开域名即可看到 IP     │
+│  client index.py   │  {"ip_address":"..."} │  VPS: Nginx(443) → gunicorn  │
+│  home Linux host   │ ────────────────────► │  Flask app.py → SQLite       │
+│  systemd service   │   X-Auth-Token        │  open the domain in a browser│
 └────────────────────┘                       └──────────────────────────────┘
 ```
 
-## 接口一览
+## API overview
 
-| 方法 | 路径 | 用途 | 鉴权 |
+| Method | Path | Purpose | Auth |
 |---|---|---|---|
-| GET | `/` | 展示页（IP + 变更时间 + 最后心跳） | 无 |
-| POST | `/receive-ip` | 接收客户端上报 | `X-Auth-Token` |
-| GET | `/api/last-ip` | 查询最新记录（JSON） | `X-Auth-Token` |
-| GET | `/healthz` | 健康检查 | 无 |
-| POST | `/receive_ip` | **旧地址，仅兼容保留**，会打 WARNING | `X-Auth-Token` |
+| GET | `/` | Display page (IP + changed at + last heartbeat) | `APP_PASSWORD` session cookie |
+| POST | `/login` | Check the page password, set the session cookie | — |
+| POST | `/logout` | Clear the session cookie | — |
+| POST | `/receive-ip` | Receive client reports | `X-Auth-Token` |
+| GET | `/api/last-ip` | Query the latest record (JSON) | `X-Auth-Token` or page session |
+| GET | `/healthz` | Health check | None |
 
-> 路径统一用连字符（`-`）而不是下划线，符合 URL 惯例。旧的 `/receive_ip` 目前仍可用，
-> 确认所有客户端都升级后，把 `server/app.py` 里那行 `@app.route("/receive_ip", ...)` 删掉即可。
+> Paths use hyphens (`-`) rather than underscores, following URL conventions. `/receive-ip` is the
+> only reporting path: the old underscore form `/receive_ip` has been removed and now returns 404,
+> so update any client config that still uses it.
 
 
-## 两端分别需要拷什么（不用拷全部）
+## What each side needs (you don't copy everything)
 
-仓库是"一仓两用"，但**两边跑的是完全独立的两套代码**，不需要把整个仓库搬过去。
-仓库已按端分目录：`server/` 只给 VPS，`client/` 只给被追踪的机器。
+The repo serves two purposes in one, but **the two sides run completely separate code**, so you don't need to move the whole repo. The repo is already split by side: `server/` goes only to the VPS, `client/` only to the tracked machine.
 
-| 文件 | 服务端 VPS | 客户端 Linux | 说明 |
+| File | Server VPS | Client Linux | Notes |
 |---|:---:|:---:|---|
-| `server/app.py` | 必须 | — | Flask 服务端 |
-| `server/templates/index.html` | 必须 | — | 页面模板 |
-| `server/requirements.txt` | 必须 | — | Flask + gunicorn |
-| `client/index.py` | — | 必须 | 上报客户端 |
-| `client/requirements.txt` | — | 必须 | requests |
-| `server/sendip.service`、`server/nginx.conf` | 建议 | — | 服务端 systemd / Nginx 配置 |
-| `client/sendip-agent.service`、`client/sendip-agent.env.example` | — | 建议 | 客户端 systemd / 环境变量 |
-| `docs/`、`README.md`、`LICENSE` | 不需要 | 不需要 | 文档 |
-| `tools/preview.py` | 不需要 | 不需要 | 本地看版式用 |
-| `server/Dockerfile`、`server/.env.example` | 按需 | — | 只用 Docker 部署时才需要 |
+| `server/app.py` | Required | — | Flask server |
+| `server/templates/index.html` | Required | — | Page template |
+| `server/requirements.txt` | Required | — | Flask + gunicorn |
+| `client/index.py` | — | Required | Reporting client |
+| `client/requirements.txt` | — | Required | requests |
+| `server/sendip.service`, `server/nginx.conf` | Recommended | — | Server systemd / Nginx config |
+| `client/sendip-agent.service`, `client/sendip-agent.env.example` | — | Recommended | Client systemd / env vars |
+| `docs/`, `README.md`, `LICENSE` | Not needed | Not needed | Documentation |
+| `tools/preview.py` | Not needed | Not needed | Local layout preview |
+| `server/Dockerfile`, `server/.env.example` | As needed | — | Only for Docker deployment |
 
-**最小可运行集合**：服务端 3 个文件，客户端 2 个文件（已实测跑通完整链路）。
+**Minimum runnable set**: 3 files for the server, 2 files for the client (the full path has been tested end to end).
 
-### 不想手动挑文件？一键打包
+### Don't want to pick files by hand? One-command packaging
 
 ```bash
-python3 build.py          # 生成 dist/send-ip-server 和 dist/send-ip-client（各自带 .service / nginx.conf / README.md）
-python3 build.py --tar    # 额外压成 tar.gz，方便 scp
+python3 build.py          # produces dist/send-ip-server and dist/send-ip-client (each with .service / nginx.conf / bilingual README.md)
+python3 build.py --tar    # also compress to tar.gz, handy for scp
 ```
 
-然后把对应文件夹整个传上去即可，**不需要仓库里的其他任何文件**：
+Then upload each folder as a whole; **no other file from the repo is needed**:
 
 ```bash
 scp -r dist/send-ip-server/* user@vps:/opt/send-ip/
 scp -r dist/send-ip-client/* user@target:/opt/send-ip-agent/
 ```
 
-后面的一、二节仍是完整的手动步骤说明，打包只是省掉"挑文件"这一步。
+Sections 1 and 2 below are still the complete manual steps; packaging just saves you the "pick the files" step.
 
 ---
 
-## 一、服务端部署（VPS）
+## 1. Server deployment (VPS)
 
-以 Ubuntu 22.04 / 24.04、域名为 `ip.example.com` 为例，Debian 同理。
+Using Ubuntu 22.04 / 24.04 and the domain `ip.example.com` as an example; Debian works the same way.
 
-### 1. 域名解析
+### 1. DNS
 
-在域名服务商处添加 A 记录：`ip.example.com` → 你的 VPS 公网 IP。
-确认生效：`ping ip.example.com` 能解析到 VPS IP。
+Add an A record at your domain registrar: `ip.example.com` → your VPS public IP.
+Verify it took effect: `ping ip.example.com` should resolve to the VPS IP.
 
-### 2. 放行端口
+### 2. Open ports
 
-云厂商安全组和本机防火墙都要放行 80 和 443（**不要**放行 8000，只让 Nginx 走本机回环）。
+Both the cloud provider's security group and the host firewall must allow 80 and 443 (**do not** open 8000; only Nginx should reach it over the loopback interface).
 
 ```bash
 sudo ufw allow 80,443/tcp
 ```
 
-### 3. 安装依赖
+### 3. Install dependencies
 
 ```bash
 sudo apt update
 sudo apt install -y python3-venv python3-pip nginx certbot python3-certbot-nginx
 ```
 
-### 4. 上传代码（只需 3 个文件）
+### 4. Upload the code (only 3 files needed)
 
-服务端**不需要** `index.py`（客户端代码）、`tools/`、`DEPLOY.md`、`README.md`。真正要跑的只有：
+The server **does not need** `index.py` (client code), `tools/`, `DEPLOY.md`, or `README.md`. All it actually runs is:
 
 ```
-app.py                    # Flask 应用
-templates/index.html      # 页面模板
+app.py                    # Flask app
+templates/index.html      # Page template
 requirements.txt          # Flask + gunicorn
 ```
 
-下面三种方式挑一种。
+Pick one of the three approaches below.
 
-**方式 A：本地 rsync（推荐，文件最少）**
+**Option A: rsync from your machine (recommended, fewest files)**
 
 ```bash
-# 在本地仓库目录执行
+# Run from your local repo directory
 ssh user@vps 'sudo mkdir -p /opt/send-ip/templates /opt/send-ip/deploy && sudo chown -R $USER:$USER /opt/send-ip'
 rsync -avz server/app.py server/requirements.txt server/.env.example user@vps:/opt/send-ip/
 rsync -avz server/templates/ user@vps:/opt/send-ip/templates/
 rsync -avz server/sendip.service server/nginx.conf user@vps:/opt/send-ip/deploy/
 ```
 
-**方式 B：在 VPS 上用 git，只检出 server 目录**
+**Option B: git on the VPS, checking out only the server directory**
 
 ```bash
 sudo mkdir -p /opt/send-ip && sudo chown -R $USER:$USER /opt/send-ip
 git clone --depth 1 --sparse https://github.com/hexoh/send-ip.git /tmp/send-ip-src
 cd /tmp/send-ip-src && git sparse-checkout set server
-# 把 server/ 的内容摊到部署目录（保持 app.py 在根）
+# Flatten server/ into the deployment directory (keep app.py at the root)
 cp -r server/. /opt/send-ip/
 ```
 
-因为仓库现在按端分了目录，`git sparse-checkout set server` 是干净的目录级裁剪，不会像之前那样被根目录文件干扰。
+Since the repo is now split by side, `git sparse-checkout set server` is a clean directory-level selection and won't be disturbed by root-level files as before.
 
-> 小提醒：`git sparse-checkout set` 只接受**目录**名，传文件名会报
-> `fatal: 'app.py' is not a directory`；根目录下的文件（`README.md`、`build.py` 等）无论如何都会检出，体积都很小，忽略即可。
+> A small reminder: `git sparse-checkout set` only accepts **directory** names; passing a file name fails with
+> `fatal: 'app.py' is not a directory`. Root-level files (`README.md`, `build.py`, etc.) are always checked out; they are tiny, just ignore them.
 
-**方式 C：图省事，整仓库 clone**
+**Option C: the easy way, clone the whole repo**
 
 ```bash
 git clone --depth 1 https://github.com/hexoh/send-ip.git /opt/send-ip
 ```
 
-三种方式产出的运行结果完全一样，区别只是磁盘上多几个不参与运行的文件。仓库里没有 `data/` 和 `preview.html`（已在 `.gitignore` 中），不用担心把本地运行数据带上去。
+All three approaches produce identical runtime results; the only difference is a few extra files on disk that don't participate in running. `data/` and `dist/` are in `.gitignore`, so you won't accidentally upload local runtime data; `ui/` only holds static page snapshots.
 
-### 5. 装依赖
+### 5. Install dependencies
 
 ```bash
 cd /opt/send-ip
 python3 -m venv .venv
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r requirements.txt   # 只装 Flask + gunicorn
+.venv/bin/pip install -r requirements.txt   # only Flask + gunicorn
 ```
 
-> 服务端不需要 `requests`，客户端不需要 `Flask`/`gunicorn`，两边依赖已拆开：
-> 服务端用 `server/requirements.txt`，客户端用 `client/requirements.txt`。
+> The server doesn't need `requests`, and the client doesn't need `Flask`/`gunicorn`; the dependencies are already split:
+> the server uses `server/requirements.txt`, the client uses `client/requirements.txt`.
 
-### 6. 生成令牌、写配置文件
+### 6. Generate the token and the page password, then write the config file
 
 ```bash
-# 生成一个随机令牌，记下来，客户端要用
+# Generate a random token for the client, write it down
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# Generate the password for the web page, keep it in your password manager
+python3 -c "import secrets; print(secrets.token_urlsafe(18))"
 ```
 
-把它填进 `/etc/send-ip.env`：
+Put them into `/etc/send-ip.env`:
 
 ```bash
 sudo cp /opt/send-ip/.env.example /etc/send-ip.env
-sudo nano /etc/send-ip.env     # 把 APP_TOKEN 换成刚生成的令牌
+sudo nano /etc/send-ip.env     # replace APP_TOKEN and APP_PASSWORD with the values above
 sudo chmod 600 /etc/send-ip.env
 ```
 
-### 7. 数据目录权限
+Server environment variables:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `APP_TOKEN` | empty | Client token. Empty = reports are not checked (local debugging only) |
+| `APP_PASSWORD` | empty | **Page password.** Any string you like (spaces trimmed at both ends). Empty = the page is public; anyone with the domain sees your IP |
+| `COOKIE_SECURE` | off | Set to `1` when served over HTTPS so the session cookie is `Secure` |
+| `SECRET_KEY` | auto | Session cookie signing key. Empty = generated once into `<DB dir>/secret.key` (mode 600) |
+| `SESSION_DAYS` | 7 | How long a login stays valid |
+| `LOGIN_MAX_FAILS` | 5 | Wrong passwords allowed from one IP before the lockout, per gunicorn worker |
+| `LOGIN_LOCK_SECONDS` | 600 | Lockout length after too many wrong passwords |
+| `DB_PATH` | `./data/ips.db` | SQLite file |
+
+> `APP_PASSWORD` protects the page **and** `/api/last-ip`. The client keeps using `APP_TOKEN`, so
+> the reporting path is unaffected. With `APP_PASSWORD` empty the app logs a warning at startup.
+
+### 7. Data directory permissions
 
 ```bash
 sudo mkdir -p /var/lib/send-ip
@@ -166,7 +190,7 @@ sudo chown -R www-data:www-data /var/lib/send-ip
 sudo chown -R www-data:www-data /opt/send-ip
 ```
 
-### 8. 注册 systemd 服务
+### 8. Register the systemd service
 
 ```bash
 sudo cp /opt/send-ip/deploy/sendip.service /etc/systemd/system/
@@ -175,169 +199,182 @@ sudo systemctl enable --now sendip
 sudo systemctl status sendip --no-pager
 ```
 
-本机自测（应该返回 `{"status":"ok"}`）：
+Local self-test (should return `{"status":"ok"}`):
 
 ```bash
 curl http://127.0.0.1:8000/healthz
 ```
 
-### 9. 配 Nginx + HTTPS
+### 9. Configure Nginx + HTTPS
 
 ```bash
 sudo cp /opt/send-ip/deploy/nginx.conf /etc/nginx/sites-available/send-ip
-# 修改 server_name 为你的真实域名
+# Change server_name to your real domain
 sudo nano /etc/nginx/sites-available/send-ip
 sudo ln -sf /etc/nginx/sites-available/send-ip /etc/nginx/sites-enabled/send-ip
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-确认 HTTP 能通后签证书（certbot 会自动改写 nginx 配置并配置 80→443 跳转）：
+Once HTTP works, issue the certificate (certbot rewrites the nginx config and sets up the 80→443 redirect automatically):
 
 ```bash
 sudo certbot --nginx -d ip.example.com
 ```
 
-### 10. 验证服务端
+### 10. Verify the server
 
 ```bash
-# 模拟客户端上报
+# Simulate a client report
 curl -X POST https://ip.example.com/receive-ip \
   -H "Content-Type: application/json" \
-  -H "X-Auth-Token: 你的令牌" \
+  -H "X-Auth-Token: your-token" \
   -d '{"ip_address":"1.2.3.4"}'
-# 期望: {"ip":"1.2.3.4","success":true,"updated_at":"..."}
+# Expected: {"ip":"1.2.3.4","success":true,"updated_at":"..."}
 
-# 不带令牌应该被拒
+# Without the token it should be rejected
 curl -o /dev/null -w "%{http_code}\n" -X POST https://ip.example.com/receive-ip \
   -H "Content-Type: application/json" -d '{"ip_address":"1.2.3.4"}'
-# 期望: 401
+# Expected: 401
 ```
 
-浏览器打开 `https://ip.example.com` 就能看到 IP，页面每 60 秒自动刷新。
+Open `https://ip.example.com` in a browser and you'll see the IP; the page refreshes every 60 seconds.
 
 ---
 
-## 二、客户端部署（要被追踪 IP 的 Linux 机器）
+## 2. Client deployment (the Linux machine whose IP is tracked)
 
-这台机器是**主动上报方**，不需要公网 IP、不需要开放端口，只要能访问外网即可。
+This machine is the **reporting side**: it needs no public IP, no open ports, just outbound internet access.
 
-### 1. 放代码（只需 2 个文件）
+### 1. Put the code in place (only 2 files needed)
 
 ```bash
 sudo mkdir -p /opt/send-ip-agent
 sudo chown -R $USER:$USER /opt/send-ip-agent
-# 客户端只需要 client/ 下的这两个文件
+# The client only needs these two files from client/
 scp client/index.py client/requirements.txt user@target:/opt/send-ip-agent/
-# 想顺便带上 systemd 与环境变量模板
+# Optionally bring along the systemd unit and env template
 scp -r client/sendip-agent.service client/sendip-agent.env.example user@target:/opt/send-ip-agent/
 ```
 
-### 2. 装依赖
+### 2. Install dependencies
 
 ```bash
 cd /opt/send-ip-agent
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt   # 只装 requests
+.venv/bin/pip install -r requirements.txt   # only requests
 ```
 
-> 客户端不需要 Flask 和 gunicorn，别装 `server/requirements.txt`，会白装几十 MB。实测最小客户端只有 `index.py` + `requirements.txt` 两个文件、依赖仅 `requests`。
+> The client doesn't need Flask or gunicorn; don't install `server/requirements.txt`, it would waste tens of MB. The tested minimum client is just `index.py` + `requirements.txt`, with `requests` as the only dependency.
 
-### 3. 先手工跑一次确认能通
+### 3. Run it once by hand to confirm connectivity
 
 ```bash
 /opt/send-ip-agent/.venv/bin/python index.py \
   --domain https://ip.example.com/receive-ip \
-  --token 你的令牌 \
+  --token your-token \
   --once
 ```
 
-看到 `上报成功` 就说明链路 OK。
+Seeing `上报成功` (report succeeded) means the path is OK.
 
-### 4. 注册 systemd 常驻
+### 4. Register the systemd service
 
 ```bash
 sudo tee /etc/send-ip-agent.env > /dev/null <<'EOF'
 SENDIP_DOMAIN=https://ip.example.com/receive-ip
-SENDIP_TOKEN=你的令牌
+SENDIP_TOKEN=your-token
 SENDIP_INTERVAL=3600
 EOF
 sudo chmod 600 /etc/send-ip-agent.env
 
-# 上一步已把客户端包放到 /opt/send-ip-agent，直接用
+# The client bundle is already in /opt/send-ip-agent from the previous step, use it directly
 sudo cp /opt/send-ip-agent/sendip-agent.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now sendip-agent
 sudo journalctl -u sendip-agent -f
 ```
 
-> `client/sendip-agent.service` 里默认 `User=nobody`，如果 venv 目录权限有问题就改成实际用户，比如 `User=pi`。
+> `client/sendip-agent.service` defaults to `User=nobody`. If the venv directory permissions cause problems, change it to the actual user, e.g. `User=pi`.
 
-### 5. 客户端参数与上报节奏
+### 5. Client options and reporting cadence
 
-| 参数 | 环境变量 | 说明 |
+| Option | Env var | Description |
 |---|---|---|
-| `--domain` | `SENDIP_DOMAIN` | 服务端接收地址，必填 |
-| `--token` | `SENDIP_TOKEN` | 与服务端 `APP_TOKEN` 一致 |
-| `--interval` | `SENDIP_INTERVAL` | 上报间隔秒数，默认 3600（1 小时），最小 60 |
-| `--once` | — | 只跑一次，用于排错 |
+| `--domain` | `SENDIP_DOMAIN` | Server receive URL, required |
+| `--token` | `SENDIP_TOKEN` | Must match the server's `APP_TOKEN` |
+| `--interval` | `SENDIP_INTERVAL` | Reporting interval in seconds, default 3600 (1 hour), minimum 60 |
+| `--once` | — | Run once and exit, for troubleshooting |
 
-**间隔怎么选**：家宽的公网 IP 只在 PPPoE 重拨、光猫/路由重启、运营商回收租约时变化，日常非常稳定，所以默认 1 小时足够。代价是最坏情况下 IP 变了要等近 1 小时才发现。
+**Choosing an interval**: a home broadband public IP only changes on PPPoE re-dial, router/ONT restart, or when the ISP reclaims the lease, so it is very stable day to day; the default 1 hour is enough. The cost is that in the worst case it takes nearly an hour to notice an IP change.
 
-| 场景 | 建议间隔 | 说明 |
+| Scenario | Suggested interval | Notes |
 |---|---|---|
-| 只是想知道家里现在什么 IP | 3600（默认） | 每月约 720 次查询，远低于 ipinfo 免费额度 |
-| 要跑 DDNS / 有远程办公刚需 | 600 ~ 900 | 变更发现延迟降到 10~15 分钟 |
-| 对外提供服务，要求秒级切换 | 120 ~ 300 | 配合服务端做变更通知才有意义 |
+| Just want to know the current home IP | 3600 (default) | About 720 lookups per month, well under ipinfo's free quota |
+| Running DDNS / remote work is a hard requirement | 600 ~ 900 | Change detection latency drops to 10–15 minutes |
+| Serving traffic publicly, need switchover in seconds | 120 ~ 300 | Only meaningful together with server-side change notifications |
 
-**上报语义是心跳**：每次都会向服务端上报（不是"IP 变了才报"），服务端据此区分两个时间——
+**Reporting is a heartbeat**: every run reports to the server (not only when the IP changes), which lets the server distinguish two timestamps:
 
-- **IP 变更于**：这个 IP 第一次被看到的时间，IP 没变就不会刷新
-- **最后心跳**：最后一次成功上报的时间，超过 2 个间隔没更新就说明客户端掉线了
+- **IP changed at**: when this IP was first seen; it is not refreshed while the IP stays the same
+- **Last heartbeat**: the time of the last successful report; if it hasn't updated for more than 2 intervals, the client is offline
 
-这样即使 IP 一个月不变，页面上的时间也不会显得像"服务挂了"。
+That way, even if the IP stays unchanged for a month, the timestamps on the page don't look like "the service is down".
 
-其他行为：连续失败会指数退避（从 30 分钟封顶，避免把服务端/查询源打爆）；查 IP 有三个源兜底（ipinfo.io → ipify → ifconfig.me）。
+Other behavior: consecutive failures use exponential backoff (capped at 30 minutes, so the server and lookup providers aren't hammered); IP lookup has three fallback sources (ipinfo.io → ipify → ifconfig.me).
 
 ---
 
-## 三、Docker 方式部署服务端（可选）
+## 3. Deploying the server with Docker (optional)
 
-不想折腾 venv 和 systemd 的话：
+If you'd rather not deal with venv and systemd:
 
 ```bash
 cd /opt/send-ip
 docker build -t send-ip .
 docker run -d --name send-ip --restart unless-stopped \
   -p 127.0.0.1:8000:8000 \
-  -e APP_TOKEN=你的令牌 \
+  -e APP_TOKEN=your-token \
   -v sendip-data:/data \
   send-ip
 ```
 
-Nginx 和 HTTPS 部分不变（仍然反代到 `127.0.0.1:8000`）。
+Nginx and HTTPS are unchanged (still proxying to `127.0.0.1:8000`).
 
 ---
 
-## 四、排错
+## 4. Troubleshooting
 
-| 现象 | 排查方向 |
+| Symptom | What to check |
 |---|---|
-| 浏览器打不开首页 | `systemctl status sendip`、`journalctl -u sendip -n 50`；`curl 127.0.0.1:8000/healthz` 区分是应用还是 Nginx 问题 |
-| **上报返回 405** | **`--domain` 填成了页面地址**，必须带 `/receive-ip` 后缀。例：`https://hexoo.me/ip/` 应写作 `https://hexoo.me/ip/receive-ip`。新版客户端会自动补全并重试，日志里会有 WARNING 提示 |
-| 上报返回 401 | 客户端 `--token` 与服务端 `/etc/send-ip.env` 的 `APP_TOKEN` 不一致（注意别带引号和空格） |
-| 上报返回 404 | Nginx 没代理该路径前缀，或 `--domain` 少了子路径。先用 `curl -i -X POST 域名/路径/receive-ip` 确认路由存在（应返回 401 而非 404） |
-| 上报返回 502 | gunicorn 没起来，看 `journalctl -u sendip` |
-| 日志报"200 但不是接口响应" | 地址被 301 跳转到了页面，同样缺 `/receive-ip` 后缀 |
-| 首页一直是"尚未接收到" | 客户端没跑起来或没上报成功，`journalctl -u sendip-agent -f` |
-| 端口 8000 通但外网不通 | 检查 ufw / 安全组，以及 Nginx 是否加载了该站点 |
-| 证书签发失败 | 确认 80 端口可达、DNS 已生效；`sudo certbot renew --dry-run` 验证续期 |
+| Browser can't open the home page | `systemctl status sendip`, `journalctl -u sendip -n 50`; `curl 127.0.0.1:8000/healthz` tells you whether it's the app or Nginx |
+| **Report returns 405** | **`--domain` points to the page URL**; it must end with `/receive-ip`. E.g. `https://hexoo.me/ip/` should be `https://hexoo.me/ip/receive-ip`. Newer clients auto-complete and retry, logging a WARNING |
+| Report returns 401 | The client's `--token` doesn't match `APP_TOKEN` in the server's `/etc/send-ip.env` (watch out for quotes and spaces) |
+| Report returns 404 | Nginx isn't proxying that path prefix, `--domain` is missing a sub-path, or it still uses the removed `/receive_ip` (hyphen, not underscore). First confirm the route exists with `curl -i -X POST domain/path/receive-ip` (should return 401, not 404) |
+| Report returns 502 | gunicorn isn't running, check `journalctl -u sendip` |
+| Log says "200 but not an API response" | The URL was 301-redirected to the page; again the `/receive-ip` suffix is missing |
+| Home page always shows "not received yet" | The client isn't running or hasn't reported successfully; `journalctl -u sendip-agent -f` |
+| Forgot the page password | Edit `APP_PASSWORD` in `/etc/send-ip.env`, then `sudo systemctl restart sendip` |
+| Login returns 429 / "Too many attempts" | `LOGIN_MAX_FAILS` wrong passwords from one IP trigger a `LOGIN_LOCK_SECONDS` lockout (default 5 / 10 min). Wait it out, or restart the service to clear the counters |
+| Everyone is logged out after every restart | `secret.key` couldn't be written. Check that `/var/lib/send-ip/` is owned by `www-data`, or set `SECRET_KEY` explicitly |
+| Password accepted but the page asks again | The session cookie doesn't come back: use HTTPS (and set `COOKIE_SECURE=1`); make sure Nginx passes cookies untouched |
+| Port 8000 works locally but not from outside | Check ufw / the security group, and whether Nginx loaded the site |
+| Certificate issuance fails | Make sure port 80 is reachable and DNS has propagated; verify renewal with `sudo certbot renew --dry-run` |
 
 ---
 
-## 五、安全提醒
+## 5. Security notes
 
-- **务必设置 `APP_TOKEN`**，否则公网任何人都能往你的页面写假 IP。
-- 全链路走 HTTPS，不要在公网用明文 HTTP 传令牌。
-- 8000 端口只绑 `127.0.0.1`，不要暴露到公网。
-- 域名和端口不对外公开时，这个页面等于公开了你家宽出口 IP，介意的话可以考虑加一层 Basic Auth 或用随机路径。
+- **Always set `APP_TOKEN`**; otherwise anyone on the internet can write fake IPs to your page.
+- **Always set `APP_PASSWORD`**; otherwise anyone who finds the domain can read your IP. The
+  password is compared in constant time, the browser only receives a signed cookie (HttpOnly,
+  SameSite=Lax, 7 days), and `/api/last-ip` is gated the same way. It is sent once per login, so
+  serve the site over HTTPS.
+- Any string works as `APP_PASSWORD` (Chinese and symbols are fine); a long random one is just
+  harder to guess. The lockout is a speed bump, not a substitute for entropy.
+- Quote the value in the env file when it contains spaces, `#` or quotes: `APP_PASSWORD='my pass#1'`.
+  Leading and trailing spaces are trimmed, so don't rely on them.
+- The password sits in plain text in `/etc/send-ip.env` (mode 600) — anyone who can read that file
+  already controls the server.
+- Use HTTPS end to end; never send the token over plain HTTP on the public internet.
+- Bind port 8000 to `127.0.0.1` only; never expose it publicly.

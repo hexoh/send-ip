@@ -1,23 +1,35 @@
-"""IP 接收与展示服务端。
+"""IP receiving and display server.
 
-接收客户端 POST 上来的公网 IP 并持久化（SQLite），首页展示最后一次上报结果。
+Receives the public IP POSTed by clients and persists it (SQLite); the home page shows the latest report.
 
-环境变量：
-    APP_TOKEN   鉴权令牌，客户端需在请求头 X-Auth-Token 中携带。留空则不校验（仅本机调试用）
-    DB_PATH     SQLite 文件路径，默认 ./data/ips.db
-    PORT        监听端口，默认 8000（仅直接运行本文件时生效）
+Environment variables:
+    APP_TOKEN   Auth token; clients must send it in the X-Auth-Token header. Leave empty to disable checks (local debugging only)
+    APP_PASSWORD  Password for the web page. Leave empty to keep the page public (not recommended)
+    SECRET_KEY  Key used to sign session cookies; auto-generated into <DB dir>/secret.key when empty
+    COOKIE_SECURE  Set to 1 when the site is served over HTTPS so the session cookie is Secure-only
+    DB_PATH     SQLite file path, defaults to ./data/ips.db
+    PORT        Listen port, defaults to 8000 (only used when running this file directly)
 """
 
+import hmac
+import ipaddress
 import logging
 import os
+import secrets
 import sqlite3
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, session
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH") or os.path.join(BASE_DIR, "data", "ips.db")
 APP_TOKEN = os.environ.get("APP_TOKEN", "").strip()
+# Any string works as the password; only the outermost spaces are trimmed so an accidentally
+# padded line in the env file does not lock the owner out.
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "").strip()
+PAGE_LOCKED = bool(APP_PASSWORD)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,16 +37,96 @@ logging.basicConfig(
 )
 log = logging.getLogger("sendip")
 
+
+def env_int(name, default):
+    """Read a positive integer from the environment, falling back to the default on junk."""
+    try:
+        value = int(os.environ.get(name, "").strip())
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "").strip().lower() in ("1", "true", "yes", "on")
+SESSION_DAYS = env_int("SESSION_DAYS", 7)
+LOGIN_MAX_FAILS = env_int("LOGIN_MAX_FAILS", 5)
+LOGIN_LOCK_SECONDS = env_int("LOGIN_LOCK_SECONDS", 600)
+
+
+def load_secret_key():
+    """Return the key that signs session cookies.
+
+    Reuse SECRET_KEY when given; otherwise create <DB dir>/secret.key once (mode 600) so that
+    session cookies survive a restart and every gunicorn worker signs them the same way.
+    """
+    given = os.environ.get("SECRET_KEY", "").strip()
+    if given:
+        return given
+
+    path = os.path.join(os.path.dirname(DB_PATH) or ".", "secret.key")
+
+    def read():
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                return fh.read().strip()
+        except OSError:
+            return ""
+
+    saved = read()
+    if saved:
+        return saved
+
+    key = secrets.token_hex(32)
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        # O_EXCL: with several workers starting at once, exactly one creates the file and the
+        # others read it back. Writing to a shared name with O_TRUNC would let two workers
+        # overwrite each other and sign cookies differently.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        for _ in range(20):  # the winner may still be writing; give it a moment
+            saved = read()
+            if saved:
+                return saved
+            time.sleep(0.05)
+        log.warning("Session key file %s is empty; using a per-process key", path)
+        return key
+    except OSError as exc:
+        log.warning("Could not save the session key (%s); sessions will be lost on restart", exc)
+        return key
+
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(key + "\n")
+    log.info("Created a session key at %s", path)
+    return key
+
+
 app = Flask(__name__)
+
+app.config.update(
+    SECRET_KEY=load_secret_key(),
+    SESSION_COOKIE_HTTPONLY=True,   # JS must not be able to read the cookie
+    SESSION_COOKIE_SAMESITE="Lax",  # keeps the cookie off cross-site POSTs
+    SESSION_COOKIE_SECURE=COOKIE_SECURE,
+    PERMANENT_SESSION_LIFETIME=timedelta(days=SESSION_DAYS),
+)
+
+if not PAGE_LOCKED:
+    log.warning("APP_PASSWORD is empty: the page is public and anyone can read the IP. Set it in production")
+elif APP_PASSWORD in ("please-change-me-to-a-long-random-password", "changeme", "password"):
+    log.warning("APP_PASSWORD is still the example value from .env.example; set your own before exposing the page")
 
 CST = timezone(timedelta(hours=8))
 
+SUPPORTED_LANGS = ("en", "zh")
+DEFAULT_LANG = "en"
+
 
 # --------------------------------------------------------------------------- #
-# 存储层
+# Storage layer
 # --------------------------------------------------------------------------- #
 def get_db():
-    """建立连接并确保表存在。SQLite 支持多进程/多线程读，gunicorn 多 worker 下可用。"""
+    """Open a connection and ensure the table exists. SQLite supports multi-process/threaded reads, so it works with multiple gunicorn workers."""
     db_dir = os.path.dirname(DB_PATH)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
@@ -49,7 +141,7 @@ def get_db():
         )
         """
     )
-    # 兼容早期的单列 updated_at 结构：重建表但保留最后一条 IP，避免升级后页面变空
+    # Compatible with the early single-column updated_at schema: rebuild the table but keep the last IP so the page does not go blank after upgrade
     cols = {row[1] for row in conn.execute("PRAGMA table_info(ip_record)")}
     if "last_seen" not in cols:
         old = None
@@ -74,15 +166,15 @@ def get_db():
                 (old[0], old[1], old[1]),
             )
         conn.commit()
-        log.info("已升级 ip_record 表结构为心跳模式（保留原 IP: %s）", old[0] if old else "无")
+        log.info("Upgraded ip_record schema to heartbeat mode (kept IP: %s)", old[0] if old else "none")
     return conn
 
 
 def save_ip(ip):
-    """记录一次上报。
+    """Record one report.
 
-    IP 变化时换新记录并重置 first_seen；IP 未变只刷新 last_seen（心跳）。
-    只保留最新一条，避免表膨胀。
+    When the IP changes, insert a new record and reset first_seen; when unchanged, only refresh
+    last_seen (heartbeat). Keep only the latest row to prevent table growth.
     """
     now = datetime.now(CST).isoformat(timespec="seconds")
     conn = get_db()
@@ -122,7 +214,7 @@ def load_last():
         finally:
             conn.close()
     except sqlite3.Error as exc:
-        log.exception("读取数据库失败: %s", exc)
+        log.exception("Failed to read database: %s", exc)
         return {"ip": None, "first_seen": None, "last_seen": None}
     if not row:
         return {"ip": None, "first_seen": None, "last_seen": None}
@@ -130,30 +222,167 @@ def load_last():
 
 
 # --------------------------------------------------------------------------- #
-# 鉴权
+# Authentication
 # --------------------------------------------------------------------------- #
 def token_ok():
     if not APP_TOKEN:
         return True
     supplied = request.headers.get("X-Auth-Token") or request.args.get("token", "")
-    return supplied == APP_TOKEN
+    return hmac.compare_digest(supplied.encode("utf-8"), APP_TOKEN.encode("utf-8"))
 
 
 # --------------------------------------------------------------------------- #
-# 路由
+# Page password
 # --------------------------------------------------------------------------- #
+# Wrong-password counter, per client IP. In memory on purpose: no extra dependency and no
+# write on the hot path. Each gunicorn worker keeps its own table, so the effective limit is
+# LOGIN_MAX_FAILS per worker; that is plenty for a long password (see DEPLOY.md).
+_attempts = {}
+_attempts_lock = threading.Lock()
+
+
+def client_ip():
+    """Real visitor address, used as the key for the login limiter.
+
+    Directly exposed (public peer): the peer address is the truth and no header is trusted.
+    Behind a local proxy: Nginx appends the address it saw with $proxy_add_x_forwarded_for, so the
+    LAST entry is trustworthy — anything the client sent itself only ends up in front of it.
+    """
+    peer = request.remote_addr or "-"
+    try:
+        addr = ipaddress.ip_address(peer)
+        local_proxy = addr.is_private or addr.is_loopback
+    except ValueError:
+        local_proxy = False
+    if not local_proxy:
+        return peer
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[-1].strip()
+    return peer
+
+
+def page_unlocked():
+    return not PAGE_LOCKED or bool(session.get("authed"))
+
+
+def lock_seconds_left(ip):
+    """Seconds the caller still has to wait, or 0 when it may try again."""
+    now = time.monotonic()
+    with _attempts_lock:
+        state = _attempts.get(ip)
+        if not state:
+            return 0
+        if state["until"] > now:
+            return int(state["until"] - now) + 1
+        if state["until"]:  # a previous lock has expired: start counting from zero
+            _attempts.pop(ip, None)
+        return 0
+
+
+def note_failure(ip):
+    """Record one wrong password and return the lockout length it just triggered (0 if none)."""
+    now = time.monotonic()
+    with _attempts_lock:
+        if len(_attempts) > 4096:  # keep a flood of spoofed addresses from growing the dict
+            for key in [k for k, v in _attempts.items() if v["until"] <= now]:
+                _attempts.pop(key, None)
+        state = _attempts.setdefault(ip, {"fails": 0, "until": 0.0})
+        state["fails"] += 1
+        if state["fails"] >= LOGIN_MAX_FAILS:
+            state["fails"] = 0
+            state["until"] = now + LOGIN_LOCK_SECONDS
+            return LOGIN_LOCK_SECONDS
+        return 0
+
+
+def note_success(ip):
+    with _attempts_lock:
+        _attempts.pop(ip, None)
+
+
+# --------------------------------------------------------------------------- #
+# Routes
+# --------------------------------------------------------------------------- #
+def detect_lang():
+    """Pick the page language: ?lang= / the posted form wins, then Accept-Language, then English."""
+    requested = (request.values.get("lang") or "").strip().lower()
+    if requested.startswith("zh"):
+        return "zh"
+    if requested.startswith("en"):
+        return "en"
+    return request.accept_languages.best_match(SUPPORTED_LANGS) or DEFAULT_LANG
+
+
+def render_page(unlocked, error=None, status=200):
+    """Render the card. The IP is only read from the database when the visitor is allowed to see it."""
+    data = load_last() if unlocked else {"ip": None, "first_seen": None, "last_seen": None}
+    body = render_template(
+        "index.html", lang=detect_lang(), authed=unlocked, error=error, **data
+    )
+    return body, status
+
+
 @app.route("/")
 def index():
-    return render_template("index.html", **load_last())
+    return render_page(unlocked=page_unlocked())
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    if not PAGE_LOCKED:
+        return redirect("./", code=303)
+
+    ip = client_ip()
+    left = lock_seconds_left(ip)
+    if left:
+        log.warning("Password entry blocked for %s, %ss left on the lockout", ip, left)
+        body, status = render_page(unlocked=False, error="tooManyAttempts", status=429)
+        return body, status, {"Retry-After": str(left)}
+
+    # Compare bytes so non-ASCII passwords work; compare_digest keeps the check time-constant.
+    supplied = request.form.get("password", "")
+    if hmac.compare_digest(supplied.encode("utf-8"), APP_PASSWORD.encode("utf-8")):
+        note_success(ip)
+        session.permanent = True
+        session["authed"] = True
+        log.info("Page unlocked from %s", ip)
+        # 303 + relative Location: works both at the site root and under a sub-path such as /ip/
+        return redirect(f"./?lang={detect_lang()}", code=303)
+
+    locked_for = note_failure(ip)
+    if locked_for:
+        log.warning("Wrong page password from %s; locked for %ss", ip, locked_for)
+    else:
+        log.warning("Wrong page password from %s", ip)
+    return render_page(unlocked=False, error="wrongPassword", status=401)
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    if session.get("authed"):
+        log.info("Page locked again (logout from %s)", client_ip())
+    session.clear()
+    return redirect("./", code=303)
+
+
+@app.after_request
+def no_shared_cache(response):
+    """The page body depends on Accept-Language / ?lang=, and the data is live.
+
+    Without Vary, a CDN or reverse proxy could serve the English page to Chinese visitors
+    (or a stale IP for hours), so keep it out of shared caches entirely.
+    """
+    if request.endpoint in ("index", "login"):
+        response.headers["Vary"] = "Accept-Language"
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.route("/receive-ip", methods=["POST"])
-@app.route("/receive_ip", methods=["POST"])  # 兼容旧地址，确认没有旧客户端后删掉这一行
-def receive_ip():
-    if request.path.rstrip("/").endswith("receive_ip"):
-        log.warning("收到旧地址 /receive_ip 的请求，已自动兼容，请把客户端改为 /receive-ip")
+def receive_report():
     if not token_ok():
-        log.warning("鉴权失败，来源 %s", request.remote_addr)
+        log.warning("Authentication failed from %s", request.remote_addr)
         return jsonify(success=False, error="unauthorized"), 401
 
     data = request.get_json(silent=True) or {}
@@ -163,9 +392,9 @@ def receive_ip():
 
     result = save_ip(ip)
     log.info(
-        "收到 IP %s（%s）来自 %s",
+        "Received IP %s (%s) from %s",
         ip,
-        "IP 已变更" if result["changed"] else "心跳，IP 未变",
+        "IP changed" if result["changed"] else "heartbeat, IP unchanged",
         request.remote_addr,
     )
     return jsonify(success=True, **result)
@@ -173,7 +402,9 @@ def receive_ip():
 
 @app.route("/api/last-ip")
 def api_last_ip():
-    if not token_ok():
+    # The JSON carries the same IP as the page, so it needs the same gate: a browser session
+    # or a configured APP_TOKEN. With no APP_TOKEN at all, a page password alone still locks it.
+    if not (page_unlocked() or (APP_TOKEN and token_ok())):
         return jsonify(success=False, error="unauthorized"), 401
     return jsonify(success=True, **load_last())
 
@@ -185,5 +416,5 @@ def healthz():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
-    # 0.0.0.0 才能被容器外部或反向代理访问；生产环境建议用 gunicorn 启动
+    # 0.0.0.0 is required for access from outside the container or through a reverse proxy; gunicorn is recommended in production
     app.run(host="0.0.0.0", port=port, debug=False)

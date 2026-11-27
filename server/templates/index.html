@@ -1,10 +1,69 @@
+{% set S = {
+    "en": {
+        "title": "Current Public IP",
+        "label": "Current Public IP",
+        "noIp": "No IP received yet",
+        "ipChangedAt": "IP changed at",
+        "lastHeartbeat": "Last heartbeat",
+        "waiting": "Waiting for the first client report",
+        "refresh": "Page refreshes automatically every 5 minutes",
+        "now": "Now ",
+        "second": "second",
+        "minute": "minute",
+        "hour": "hour",
+        "day": "day",
+        "space": " ",
+        "plural": "s",
+        "ago": " ago",
+        "loginTitle": "Access required",
+        "loginLabel": "Protected page",
+        "loginPrompt": "Enter the access password",
+        "passwordPlaceholder": "Password",
+        "unlock": "View IP",
+        "wrongPassword": "Wrong password, please try again",
+        "tooManyAttempts": "Too many attempts, please try again later",
+        "signOut": "Sign out",
+        "langLabel": "Language"
+    },
+    "zh": {
+        "title": "当前公网 IP",
+        "label": "当前公网 IP",
+        "noIp": "尚未收到 IP",
+        "ipChangedAt": "IP 变更时间",
+        "lastHeartbeat": "最近心跳",
+        "waiting": "等待客户端首次上报",
+        "refresh": "页面每 5 分钟自动刷新",
+        "now": "现在 ",
+        "second": "秒",
+        "minute": "分钟",
+        "hour": "小时",
+        "day": "天",
+        "space": " ",
+        "plural": "",
+        "ago": "前",
+        "loginTitle": "需要验证",
+        "loginLabel": "受保护页面",
+        "loginPrompt": "请输入访问密码",
+        "passwordPlaceholder": "密码",
+        "unlock": "查看 IP",
+        "wrongPassword": "密码错误，请重试",
+        "tooManyAttempts": "尝试次数过多，请稍后再试",
+        "signOut": "退出",
+        "langLabel": "语言"
+    }
+} %}
+{% set lang = (lang|default("en")) if (lang|default("en")) in ("en", "zh") else "en" %}
+{# authed defaults to true so the template still renders when included without the flag #}
+{% set authed = authed|default(true) %}
+{% set error = (error|default(none)) if (error|default(none)) in ("wrongPassword", "tooManyAttempts") else none %}
+{% set T = S[lang] %}
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="{{ 'zh-CN' if lang == 'zh' else 'en' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title>当前公网 IP</title>
+    <title>{{ T.title if authed else T.loginTitle }}</title>
     <style>
         :root { color-scheme: light; }
         * { box-sizing: border-box; }
@@ -20,15 +79,114 @@
                          "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
         }
         .card {
+            position: relative;
             width: 100%;
             max-width: 460px;
             margin: 24px;
-            padding: 34px 28px 26px;
+            /* Extra top room so the switch in the corner never touches the centered label */
+            padding: 44px 28px 26px;
             background: #fff;
             border: 1px solid #e5e7eb;
             border-radius: 14px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
             text-align: center;
+        }
+        .lang {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            gap: 2px;
+            padding: 2px;
+            background: #f3f4f6;
+            border-radius: 8px;
+        }
+        .lang button {
+            border: 0;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: transparent;
+            font: inherit;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #6b7280;
+            cursor: pointer;
+        }
+        .lang button.active {
+            background: #fff;
+            color: #111827;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+        }
+        .lang button:not(.active):hover { color: #111827; }
+        .lang button:focus-visible {
+            outline: 2px solid #93c5fd;
+            outline-offset: 1px;
+        }
+        .signout {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            margin: 0;
+        }
+        .signout button {
+            border: 0;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: transparent;
+            font: inherit;
+            font-size: 12px;
+            color: #9ca3af;
+            cursor: pointer;
+        }
+        .signout button:hover { color: #374151; background: #f3f4f6; }
+        .signout button:focus-visible,
+        .unlock button:focus-visible {
+            outline: 2px solid #93c5fd;
+            outline-offset: 1px;
+        }
+        .prompt {
+            margin: 14px 0 18px;
+            font-size: 19px;
+            font-weight: 600;
+            color: #111827;
+        }
+        .unlock { display: grid; gap: 10px; text-align: left; }
+        .unlock input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            background: #fff;
+            font: inherit;
+            font-size: 15px;
+            color: #111827;
+        }
+        .unlock input::placeholder { color: #9ca3af; }
+        .unlock input:focus {
+            border-color: #93c5fd;
+            box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.35);
+            outline: none;
+        }
+        .unlock button {
+            padding: 10px 12px;
+            border: 0;
+            border-radius: 10px;
+            background: #111827;
+            color: #fff;
+            font: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .unlock button:hover { background: #1f2937; }
+        .error {
+            margin: -6px 0 14px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: #fef2f2;
+            color: #b91c1c;
+            font-size: 13px;
+            text-align: left;
         }
         .label {
             font-size: 13px;
@@ -44,7 +202,7 @@
             word-break: break-all;
             color: #111827;
         }
-        /* 未收到 IP 时置灰，用 body 类切换，避免把 Jinja 写进 CSS 里 */
+        /* Gray out when no IP has been received; toggle via a body class instead of putting Jinja inside CSS */
         body.no-ip .ip { color: #9ca3af; }
         .rows {
             border-top: 1px solid #f0f1f3;
@@ -76,44 +234,116 @@
         }
         body.no-ip .dot { background: #d1d5db; }
         .foot { margin-top: 20px; font-size: 12px; color: #9ca3af; }
+        /* Keep the timestamp on one line so a narrow card never splits the date */
+        #clock { white-space: nowrap; }
     </style>
 </head>
 <body class="{% if not ip %}no-ip{% endif %}">
     <div class="card">
-        <div class="label"><span class="dot"></span>当前公网 IP</div>
-        <div class="ip">{{ ip if ip else '尚未接收到 IP' }}</div>
+        <div class="lang" id="lang-switch" role="group" aria-label="{{ T.langLabel }}">
+            <button type="button" data-lang="en" lang="en"
+                    aria-pressed="{{ 'true' if lang == 'en' else 'false' }}"
+                    class="{{ 'active' if lang == 'en' else '' }}">EN</button>
+            <button type="button" data-lang="zh" lang="zh-CN"
+                    aria-pressed="{{ 'true' if lang == 'zh' else 'false' }}"
+                    class="{{ 'active' if lang == 'zh' else '' }}">中文</button>
+        </div>
+
+        {% if not authed %}
+        {# Password prompt: no IP is rendered into this response at all #}
+        <div class="label" data-i18n="loginLabel">{{ T.loginLabel }}</div>
+        <div class="prompt" data-i18n="loginPrompt">{{ T.loginPrompt }}</div>
+        {% if error %}
+        <div class="error" role="alert" data-i18n="{{ error }}">{{ T[error] }}</div>
+        {% endif %}
+        <form class="unlock" method="post" action="login">
+            <input type="hidden" name="lang" value="{{ lang }}">
+            <input type="password" name="password" id="password" required autofocus
+                   autocomplete="current-password" spellcheck="false"
+                   placeholder="{{ T.passwordPlaceholder }}"
+                   data-i18n-placeholder="passwordPlaceholder"
+                   aria-label="{{ T.passwordPlaceholder }}">
+            <button type="submit" data-i18n="unlock">{{ T.unlock }}</button>
+        </form>
+        {% else %}
+        <form class="signout" method="post" action="logout">
+            <button type="submit" data-i18n="signOut">{{ T.signOut }}</button>
+        </form>
+
+        <div class="label"><span class="dot"></span><span data-i18n="label">{{ T.label }}</span></div>
+        <div class="ip"{% if not ip %} data-i18n="noIp"{% endif %}>{{ ip if ip else T.noIp }}</div>
 
         {% if ip %}
         <div class="rows">
             <div class="row">
-                <span class="k">IP 变更于</span>
+                <span class="k" data-i18n="ipChangedAt">{{ T.ipChangedAt }}</span>
                 <span class="v" id="first-seen" data-ts="{{ first_seen }}">{{ first_seen }}</span>
             </div>
             <div class="row">
-                <span class="k">最后心跳</span>
+                <span class="k" data-i18n="lastHeartbeat">{{ T.lastHeartbeat }}</span>
                 <span class="v" id="last-seen" data-ts="{{ last_seen }}">{{ last_seen }}</span>
             </div>
         </div>
         {% else %}
-        <div class="foot">等待客户端首次上报</div>
+        <div class="foot" data-i18n="waiting">{{ T.waiting }}</div>
         {% endif %}
 
-        <div class="foot">页面每 5 分钟自动刷新 · <span id="clock"></span></div>
+        <div class="foot"><span data-i18n="refresh">{{ T.refresh }}</span> · <span id="clock"></span></div>
+        {% endif %}
     </div>
     <script>
         (function () {
+            var I18N = {{ S|tojson }};
+            var lang = {{ lang|tojson }};
+            var TITLE_KEY = {{ ('title' if authed else 'loginTitle')|tojson }};
+            var STORAGE_KEY = "sendip-lang";
+
+            // Accept "zh", "zh-CN", "en-US", ... and map them to a supported language.
+            function normalize(code) {
+                var v = (code || "").trim().toLowerCase();
+                if (v.indexOf("zh") === 0) return "zh";
+                if (v.indexOf("en") === 0) return "en";
+                return null;
+            }
+
+            // A ?lang= in the URL is an explicit request (a shared link) and wins over the
+            // remembered choice; otherwise reuse the previous choice, then the server's pick.
+            var fromUrl = null;
+            try {
+                fromUrl = normalize(new URLSearchParams(location.search).get("lang"));
+            } catch (e) { /* old browser or restricted context: fall through */ }
+
+            var saved = null;
+            try {
+                saved = normalize(localStorage.getItem(STORAGE_KEY));
+            } catch (e) { /* localStorage unavailable: keep the server-side language */ }
+
+            lang = fromUrl || saved || normalize(lang) || "en";
+
+            function strings() {
+                return I18N[lang];
+            }
+
             function rel(iso) {
                 if (!iso) return "";
-                var t = new Date(iso).getTime();
-                if (isNaN(t)) return iso;
-                var d = Math.max(0, Math.floor((Date.now() - t) / 1000));
-                if (d < 60) return d + " 秒前";
-                if (d < 3600) return Math.floor(d / 60) + " 分钟前";
+                var ts = new Date(iso).getTime();
+                if (isNaN(ts)) return iso;
+                var s = strings();
+                var d = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+
+                // Same shape for both languages: "<n><space><unit><plural?>" + "ago".
+                // Chinese simply has an empty plural suffix, so "1 小时 30 分钟前" works too.
+                function unit(n, name) {
+                    return n + s.space + name + (n === 1 ? "" : s.plural);
+                }
+
+                if (d < 60) return unit(d, s.second) + s.ago;
+                if (d < 3600) return unit(Math.floor(d / 60), s.minute) + s.ago;
                 if (d < 86400) {
                     var h = Math.floor(d / 3600), m = Math.floor((d % 3600) / 60);
-                    return h + " 小时" + (m ? " " + m + " 分钟" : "") + "前";
+                    return unit(h, s.hour) + (m ? " " + unit(m, s.minute) : "") + s.ago;
                 }
-                return Math.floor(d / 86400) + " 天前";
+                return unit(Math.floor(d / 86400), s.day) + s.ago;
             }
 
             var targets = ["first-seen", "last-seen"].map(function (id) {
@@ -127,16 +357,67 @@
                 });
                 var c = document.getElementById("clock");
                 if (c) {
-                    c.textContent = "当前 " + new Date().toLocaleString("zh-CN", { hour12: false });
+                    var locale = lang === "zh" ? "zh-CN" : "en-US";
+                    c.textContent = strings().now +
+                        new Date().toLocaleString(locale, { hour12: false });
                 }
             }
 
-            update();
-            // 相对时间每 30 秒重算，否则会一直停在“0 秒前”
+            function apply() {
+                var s = strings();
+                document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+                document.title = s[TITLE_KEY];
+                document.querySelectorAll("[data-i18n]").forEach(function (el) {
+                    var value = s[el.dataset.i18n];
+                    if (value != null) el.textContent = value;
+                });
+                // Placeholders are attributes, not text, so they need their own pass (password field)
+                document.querySelectorAll("[data-i18n-placeholder]").forEach(function (el) {
+                    var value = s[el.dataset.i18nPlaceholder];
+                    if (value != null) {
+                        el.setAttribute("placeholder", value);
+                        el.setAttribute("aria-label", value);
+                    }
+                });
+                var group = document.getElementById("lang-switch");
+                if (group) group.setAttribute("aria-label", s.langLabel);
+                document.querySelectorAll("#lang-switch button").forEach(function (btn) {
+                    var active = btn.dataset.lang === lang;
+                    btn.classList.toggle("active", active);
+                    btn.setAttribute("aria-pressed", active ? "true" : "false");
+                });
+                update();
+            }
+
+            // Sync ?lang= into the URL so the current view can be bookmarked or shared,
+            // and the 5-minute reload keeps showing the same language.
+            function remember(next) {
+                try { localStorage.setItem(STORAGE_KEY, next); } catch (e) { /* ignore */ }
+                try {
+                    var url = new URL(location.href);
+                    url.searchParams.set("lang", next);
+                    history.replaceState(null, "", url);
+                } catch (e) { /* file:// or an embedding page may block this; the view still switches */ }
+            }
+
+            document.querySelectorAll("#lang-switch button").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    if (btn.dataset.lang === lang) return;
+                    lang = btn.dataset.lang;
+                    remember(lang);
+                    apply();
+                });
+            });
+
+            apply();
+            // Recompute relative times every 30 seconds, otherwise it stays at "0 seconds ago"
             setInterval(update, 30000);
         })();
-        // 整页每 5 分钟刷新一次，抓取服务端最新数据
+        {% if authed %}
+        // Reload the whole page every 5 minutes to fetch the latest server data.
+        // Not on the password prompt: a reload there would wipe what the visitor has typed.
         setTimeout(function () { location.reload(); }, 300000);
+        {% endif %}
     </script>
 </body>
 </html>

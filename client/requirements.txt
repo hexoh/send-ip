@@ -1,3 +1,3 @@
-# 客户端（index.py）专用依赖，装在要被追踪 IP 的机器上
-# 服务端不需要这个文件，客户端也不需要装 Flask / gunicorn
+# Dependencies specific to the client (index.py), installed on the machine whose IP is tracked
+# The server does not need this file, and the client does not need Flask / gunicorn
 requests==2.32.3
