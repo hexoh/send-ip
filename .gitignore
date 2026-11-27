@@ -161,7 +161,7 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# send-ip 运行数据
+# send-ip runtime data
 data/
 *.db
 *.sqlite3
