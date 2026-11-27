@@ -135,7 +135,7 @@ cp -r server/. /opt/send-ip/
 git clone --depth 1 https://github.com/hexoh/send-ip.git /opt/send-ip
 ```
 
-三种方式产出的运行结果完全一样，区别只是磁盘上多几个不参与运行的文件。仓库里没有 `data/` 和 `preview.html`（已在 `.gitignore` 中），不用担心把本地运行数据带上去。
+三种方式产出的运行结果完全一样，区别只是磁盘上多几个不参与运行的文件。`data/` 和 `dist/` 已在 `.gitignore` 中，不用担心把本地运行数据带上去；`ui/` 里只有静态页面快照。
 
 ### 5. 装依赖
 

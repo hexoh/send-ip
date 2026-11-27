@@ -135,7 +135,7 @@ Since the repo is now split by side, `git sparse-checkout set server` is a clean
 git clone --depth 1 https://github.com/hexoh/send-ip.git /opt/send-ip
 ```
 
-All three approaches produce identical runtime results; the only difference is a few extra files on disk that don't participate in running. The repo contains no `data/` or `preview.html` (both are in `.gitignore`), so you won't accidentally upload local runtime data.
+All three approaches produce identical runtime results; the only difference is a few extra files on disk that don't participate in running. `data/` and `dist/` are in `.gitignore`, so you won't accidentally upload local runtime data; `ui/` only holds static page snapshots.
 
 ### 5. Install dependencies
 

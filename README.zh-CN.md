@@ -30,6 +30,9 @@ send-ip/
 ├── tools/
 │   ├── preview.py       # 用示例数据渲染页面快照，方便预览
 │   └── release.py       # 发版脚本：打 tag → 推送 → 由 CI 打包发布
+├── ui/                  # 静态页面快照（由 tools/preview.py 生成）
+│   ├── preview.html     # IP 展示页
+│   └── preview-login.html  # 密码输入页
 ├── packaging/           # 中英文 README 模板，打包时复制进对应部署包
 │   ├── server-README.md
 │   └── client-README.md
@@ -123,8 +126,8 @@ APP_TOKEN=devtoken APP_PASSWORD=devpass .venv/bin/python server/app.py
 也可以用 `?lang=zh` / `?lang=en` 强制指定（方便直接分享链接）。选择会记在 `localStorage` 里，
 页面每 5 分钟自动刷新后仍是同一语言。
 
-只想看页面长什么样（不起服务）：`.venv/bin/python tools/preview.py` 会生成 `preview.html`，
+只想看页面长什么样（不起服务）：`.venv/bin/python tools/preview.py` 会生成 `ui/preview.html`，
 加 `--empty` 可预览"尚未接收 IP"的空状态，加 `--lang zh` 可渲染中文版，
-加 `--login`（可再叠加 `--error`）可预览密码输入卡片。
+加 `--login`（可再叠加 `--error`）会生成 `ui/preview-login.html`，即密码输入页。
 
 生产部署见 [DEPLOY.zh-CN.md](docs/DEPLOY.zh-CN.md)。
