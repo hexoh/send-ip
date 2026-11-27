@@ -25,7 +25,8 @@ send-ip/
 │   ├── sendip-agent.service      # systemd unit
 │   └── sendip-agent.env.example  # Env var example (domain/token/interval)
 ├── docs/
-│   └── DEPLOY.md        # Full deployment guide (VPS + Nginx + HTTPS + systemd)
+│   ├── DEPLOY.md        # Full deployment guide (English)
+│   └── DEPLOY.zh-CN.md  # Full deployment guide (简体中文)
 ├── tools/
 │   ├── preview.py       # Render a page snapshot from sample data for preview
 │   └── release.py       # Release script: tag → push → CI builds and publishes

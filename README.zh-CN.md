@@ -25,7 +25,8 @@ send-ip/
 │   ├── sendip-agent.service      # systemd 单元
 │   └── sendip-agent.env.example  # 环境变量示例（域名/令牌/间隔）
 ├── docs/
-│   └── DEPLOY.md        # 完整部署指南（VPS + Nginx + HTTPS + systemd）
+│   ├── DEPLOY.md        # 完整部署指南（英文）
+│   └── DEPLOY.zh-CN.md  # 完整部署指南（简体中文）
 ├── tools/
 │   ├── preview.py       # 用示例数据渲染页面快照，方便预览
 │   └── release.py       # 发版脚本：打 tag → 推送 → 由 CI 打包发布
@@ -114,4 +115,4 @@ APP_TOKEN=devtoken .venv/bin/python server/app.py
 只想看页面长什么样（不起服务）：`.venv/bin/python tools/preview.py` 会生成 `preview.html`，
 加 `--empty` 可预览"尚未接收 IP"的空状态。
 
-生产部署见 [DEPLOY.md](docs/DEPLOY.md)。
+生产部署见 [DEPLOY.zh-CN.md](docs/DEPLOY.zh-CN.md)。
