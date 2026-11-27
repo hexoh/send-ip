@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '已存在的 tag（如 v1.0.0）'
+        description: 'Existing tag (e.g. v1.0.0)'
         required: true
         type: string
 
@@ -27,10 +27,10 @@ concurrency:
 
 jobs:
   build:
-    name: 打包并发布
+    name: Build and publish
     runs-on: ubuntu-latest
     steps:
-      - name: 解析版本号
+      - name: Resolve version
         id: meta
         env:
           RAW_REF: ${{ inputs.tag || github.ref_name }}
@@ -41,7 +41,7 @@ jobs:
           tag="v${tag}"
 
           if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
-            echo "::error::tag '${tag}' 不符合 vX.Y.Z 或 vX.Y.Z-rc1 格式"
+            echo "::error::tag '${tag}' does not match the vX.Y.Z or vX.Y.Z-rc1 format"
             exit 1
           fi
 
@@ -53,15 +53,15 @@ jobs:
           else
             echo "prerelease=false"   >> "$GITHUB_OUTPUT"
           fi
-          echo "发布版本 ${version}"
+          echo "Releasing version ${version}"
 
-      - name: 检出代码
+      - name: Check out code
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.meta.outputs.tag }}
           fetch-depth: 0
 
-      - name: 确认 tag 指向当前提交
+      - name: Verify tag points to the current commit
         env:
           EXPECTED: ${{ steps.meta.outputs.tag }}
         run: |
@@ -72,30 +72,30 @@ jobs:
           echo "checkout       -> ${actual}"
           test "$actual" = "$tagged"
 
-      - name: 准备 Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: 打包
+      - name: Build
         env:
           VERSION: ${{ steps.meta.outputs.version }}
         run: python3 build.py --tar --version "$VERSION"
 
-      - name: 校验产物
+      - name: Validate artifacts
         env:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
           for pkg in send-ip-server send-ip-client; do
             tar_file="dist/${pkg}.tar.gz"
-            test -f "$tar_file" || { echo "::error::缺少 $tar_file"; exit 1; }
+            test -f "$tar_file" || { echo "::error::missing $tar_file"; exit 1; }
             # Bundled version must match the tag
-            echo "--- ${pkg} 内容 ---"
+            echo "--- ${pkg} contents ---"
             tar -tzf "$tar_file"
             packaged="$(tar -xzOf "$tar_file" "${pkg}/VERSION" | tr -d '\r\n')"
             if [ "$packaged" != "$VERSION" ]; then
-              echo "::error::${pkg} 包内版本 ${packaged} != tag 版本 ${VERSION}"
+              echo "::error::${pkg} bundled version ${packaged} != tag version ${VERSION}"
               exit 1
             fi
           done
@@ -106,9 +106,9 @@ jobs:
           tar -tzf dist/send-ip-server.tar.gz | grep -qx 'send-ip-server/requirements.txt'
           tar -tzf dist/send-ip-client.tar.gz | grep -qx 'send-ip-client/index.py'
           tar -tzf dist/send-ip-client.tar.gz | grep -qx 'send-ip-client/requirements.txt'
-          echo "产物校验通过"
+          echo "Artifact validation passed"
 
-      - name: 版本化文件名并生成校验和
+      - name: Version file names and generate checksums
         env:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
@@ -119,7 +119,7 @@ jobs:
           sha256sum ./*.tar.gz > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: 上传工作流产物
+      - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
           name: send-ip-${{ steps.meta.outputs.version }}
@@ -128,7 +128,7 @@ jobs:
             dist/SHA256SUMS.txt
           retention-days: 30
 
-      - name: 创建 GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
@@ -141,7 +141,7 @@ jobs:
           prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
           fail_on_unmatched_files: true
 
-      - name: 写入任务摘要
+      - name: Write job summary
         if: always()
         env:
           TAG: ${{ steps.meta.outputs.tag }}
@@ -149,11 +149,11 @@ jobs:
           JOB_STATUS: ${{ job.status }}
         run: |
           {
-            echo "## ${TAG}（${JOB_STATUS}）"
+            echo "## ${TAG} (${JOB_STATUS})"
             echo
-            echo "| 附件 | 说明 |"
+            echo "| Artifact | Description |"
             echo "|---|---|"
-            echo "| send-ip-server-${VERSION}.tar.gz | 服务端，解压到 /opt/send-ip |"
-            echo "| send-ip-client-${VERSION}.tar.gz | 客户端，解压到 /opt/send-ip-agent |"
-            echo "| SHA256SUMS.txt | 校验和，sha256sum -c 使用 |"
+            echo "| send-ip-server-${VERSION}.tar.gz | Server side, extract to /opt/send-ip |"
+            echo "| send-ip-client-${VERSION}.tar.gz | Client side, extract to /opt/send-ip-agent |"
+            echo "| SHA256SUMS.txt | Checksums, verify with sha256sum -c |"
           } >> "$GITHUB_STEP_SUMMARY"
