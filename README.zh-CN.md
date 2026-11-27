@@ -4,7 +4,7 @@
   <b>简体中文</b> | <a href="README.md">English</a>
 </p>
 
-获取本地公网 IP，上报到自己的服务器并展示。客户端每小时查一次公网 IP 上报，服务端存库并提供网页查看。
+获取本地公网 IP，上报到自己的服务器并展示。客户端每小时查一次公网 IP 上报，服务端存库并提供需要密码才能查看的网页。
 > 适用范围: 家庭宽带公网IP或者动态IP的服务器
 
 ## 目录结构
@@ -106,20 +106,25 @@ python3 -m venv .venv
 .venv/bin/pip install -r server/requirements.txt
 .venv/bin/pip install -r client/requirements.txt   # 本机同时跑两端时两个都装
 
-# 终端 1：启动服务端
-APP_TOKEN=devtoken .venv/bin/python server/app.py
+# 终端 1：启动服务端（APP_PASSWORD 保护页面，去掉则页面公开）
+APP_TOKEN=devtoken APP_PASSWORD=devpass .venv/bin/python server/app.py
 
 # 终端 2：上报一次
 .venv/bin/python client/index.py --domain http://127.0.0.1:8000/receive-ip --token devtoken --once
 
-# 浏览器打开 http://127.0.0.1:8000 查看
+# 浏览器打开 http://127.0.0.1:8000，输入 devpass 查看
 ```
+
+页面由 `APP_PASSWORD` 把守：没登录时浏览器只会拿到一张密码卡片，看不到 IP；`/api/last-ip` 同样受保护
+（客户端仍用 `APP_TOKEN` 上报）。同一 IP 连续输错 5 次会锁 10 分钟。`APP_PASSWORD` 为空则页面公开，
+只适合本地调试——这种状态下启动日志会打一条警告。
 
 页面右上角有**语言切换**（EN / 中文）。首次访问跟随浏览器的 `Accept-Language`，
 也可以用 `?lang=zh` / `?lang=en` 强制指定（方便直接分享链接）。选择会记在 `localStorage` 里，
 页面每 5 分钟自动刷新后仍是同一语言。
 
 只想看页面长什么样（不起服务）：`.venv/bin/python tools/preview.py` 会生成 `preview.html`，
-加 `--empty` 可预览"尚未接收 IP"的空状态，加 `--lang zh` 可渲染中文版。
+加 `--empty` 可预览"尚未接收 IP"的空状态，加 `--lang zh` 可渲染中文版，
+加 `--login`（可再叠加 `--error`）可预览密码输入卡片。
 
 生产部署见 [DEPLOY.zh-CN.md](docs/DEPLOY.zh-CN.md)。

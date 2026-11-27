@@ -18,9 +18,11 @@ The server runs on a cloud host, receives the IP and displays it; the client run
 
 | Method | Path | Purpose | Auth |
 |---|---|---|---|
-| GET | `/` | Display page (IP + changed at + last heartbeat) | None |
+| GET | `/` | Display page (IP + changed at + last heartbeat) | `APP_PASSWORD` session cookie |
+| POST | `/login` | Check the page password, set the session cookie | — |
+| POST | `/logout` | Clear the session cookie | — |
 | POST | `/receive-ip` | Receive client reports | `X-Auth-Token` |
-| GET | `/api/last-ip` | Query the latest record (JSON) | `X-Auth-Token` |
+| GET | `/api/last-ip` | Query the latest record (JSON) | `X-Auth-Token` or page session |
 | GET | `/healthz` | Health check | None |
 | POST | `/receive_ip` | **Legacy path, kept for compatibility only**, logs a WARNING | `X-Auth-Token` |
 
@@ -147,20 +149,39 @@ python3 -m venv .venv
 > The server doesn't need `requests`, and the client doesn't need `Flask`/`gunicorn`; the dependencies are already split:
 > the server uses `server/requirements.txt`, the client uses `client/requirements.txt`.
 
-### 6. Generate a token and write the config file
+### 6. Generate the token and the page password, then write the config file
 
 ```bash
-# Generate a random token, write it down, the client will need it
+# Generate a random token for the client, write it down
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# Generate the password for the web page, keep it in your password manager
+python3 -c "import secrets; print(secrets.token_urlsafe(18))"
 ```
 
-Put it into `/etc/send-ip.env`:
+Put them into `/etc/send-ip.env`:
 
 ```bash
 sudo cp /opt/send-ip/.env.example /etc/send-ip.env
-sudo nano /etc/send-ip.env     # replace APP_TOKEN with the token you just generated
+sudo nano /etc/send-ip.env     # replace APP_TOKEN and APP_PASSWORD with the values above
 sudo chmod 600 /etc/send-ip.env
 ```
+
+Server environment variables:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `APP_TOKEN` | empty | Client token. Empty = reports are not checked (local debugging only) |
+| `APP_PASSWORD` | empty | **Page password.** Any string you like (spaces trimmed at both ends). Empty = the page is public; anyone with the domain sees your IP |
+| `COOKIE_SECURE` | off | Set to `1` when served over HTTPS so the session cookie is `Secure` |
+| `SECRET_KEY` | auto | Session cookie signing key. Empty = generated once into `<DB dir>/secret.key` (mode 600) |
+| `SESSION_DAYS` | 7 | How long a login stays valid |
+| `LOGIN_MAX_FAILS` | 5 | Wrong passwords allowed from one IP before the lockout, per gunicorn worker |
+| `LOGIN_LOCK_SECONDS` | 600 | Lockout length after too many wrong passwords |
+| `DB_PATH` | `./data/ips.db` | SQLite file |
+
+> `APP_PASSWORD` protects the page **and** `/api/last-ip`. The client keeps using `APP_TOKEN`, so
+> the reporting path is unaffected. With `APP_PASSWORD` empty the app logs a warning at startup.
 
 ### 7. Data directory permissions
 
@@ -334,6 +355,10 @@ Nginx and HTTPS are unchanged (still proxying to `127.0.0.1:8000`).
 | Report returns 502 | gunicorn isn't running, check `journalctl -u sendip` |
 | Log says "200 but not an API response" | The URL was 301-redirected to the page; again the `/receive-ip` suffix is missing |
 | Home page always shows "not received yet" | The client isn't running or hasn't reported successfully; `journalctl -u sendip-agent -f` |
+| Forgot the page password | Edit `APP_PASSWORD` in `/etc/send-ip.env`, then `sudo systemctl restart sendip` |
+| Login returns 429 / "Too many attempts" | `LOGIN_MAX_FAILS` wrong passwords from one IP trigger a `LOGIN_LOCK_SECONDS` lockout (default 5 / 10 min). Wait it out, or restart the service to clear the counters |
+| Everyone is logged out after every restart | `secret.key` couldn't be written. Check that `/var/lib/send-ip/` is owned by `www-data`, or set `SECRET_KEY` explicitly |
+| Password accepted but the page asks again | The session cookie doesn't come back: use HTTPS (and set `COOKIE_SECURE=1`); make sure Nginx passes cookies untouched |
 | Port 8000 works locally but not from outside | Check ufw / the security group, and whether Nginx loaded the site |
 | Certificate issuance fails | Make sure port 80 is reachable and DNS has propagated; verify renewal with `sudo certbot renew --dry-run` |
 
@@ -342,6 +367,15 @@ Nginx and HTTPS are unchanged (still proxying to `127.0.0.1:8000`).
 ## 5. Security notes
 
 - **Always set `APP_TOKEN`**; otherwise anyone on the internet can write fake IPs to your page.
+- **Always set `APP_PASSWORD`**; otherwise anyone who finds the domain can read your IP. The
+  password is compared in constant time, the browser only receives a signed cookie (HttpOnly,
+  SameSite=Lax, 7 days), and `/api/last-ip` is gated the same way. It is sent once per login, so
+  serve the site over HTTPS.
+- Any string works as `APP_PASSWORD` (Chinese and symbols are fine); a long random one is just
+  harder to guess. The lockout is a speed bump, not a substitute for entropy.
+- Quote the value in the env file when it contains spaces, `#` or quotes: `APP_PASSWORD='my pass#1'`.
+  Leading and trailing spaces are trimmed, so don't rely on them.
+- The password sits in plain text in `/etc/send-ip.env` (mode 600) — anyone who can read that file
+  already controls the server.
 - Use HTTPS end to end; never send the token over plain HTTP on the public internet.
 - Bind port 8000 to `127.0.0.1` only; never expose it publicly.
-- If the domain and port aren't public knowledge, this page effectively publishes your home broadband egress IP; if that concerns you, consider adding Basic Auth or using a random path.

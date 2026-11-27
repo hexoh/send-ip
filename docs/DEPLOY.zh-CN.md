@@ -18,9 +18,11 @@
 
 | 方法 | 路径 | 用途 | 鉴权 |
 |---|---|---|---|
-| GET | `/` | 展示页（IP + 变更时间 + 最后心跳） | 无 |
+| GET | `/` | 展示页（IP + 变更时间 + 最后心跳） | `APP_PASSWORD` 会话 Cookie |
+| POST | `/login` | 校验页面密码，下发会话 Cookie | 无 |
+| POST | `/logout` | 清除会话 Cookie | 无 |
 | POST | `/receive-ip` | 接收客户端上报 | `X-Auth-Token` |
-| GET | `/api/last-ip` | 查询最新记录（JSON） | `X-Auth-Token` |
+| GET | `/api/last-ip` | 查询最新记录（JSON） | `X-Auth-Token` 或页面会话 |
 | GET | `/healthz` | 健康检查 | 无 |
 | POST | `/receive_ip` | **旧地址，仅兼容保留**，会打 WARNING | `X-Auth-Token` |
 
@@ -147,20 +149,39 @@ python3 -m venv .venv
 > 服务端不需要 `requests`，客户端不需要 `Flask`/`gunicorn`，两边依赖已拆开：
 > 服务端用 `server/requirements.txt`，客户端用 `client/requirements.txt`。
 
-### 6. 生成令牌、写配置文件
+### 6. 生成令牌与页面密码、写配置文件
 
 ```bash
 # 生成一个随机令牌，记下来，客户端要用
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# 生成页面访问密码，存到密码管理器里
+python3 -c "import secrets; print(secrets.token_urlsafe(18))"
 ```
 
-把它填进 `/etc/send-ip.env`：
+把它们填进 `/etc/send-ip.env`：
 
 ```bash
 sudo cp /opt/send-ip/.env.example /etc/send-ip.env
-sudo nano /etc/send-ip.env     # 把 APP_TOKEN 换成刚生成的令牌
+sudo nano /etc/send-ip.env     # 把 APP_TOKEN 和 APP_PASSWORD 换成刚生成的值
 sudo chmod 600 /etc/send-ip.env
 ```
+
+服务端环境变量：
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `APP_TOKEN` | 空 | 客户端令牌。留空 = 不校验上报（只能本地调试） |
+| `APP_PASSWORD` | 空 | **页面密码**，随你定（首尾空格会被忽略）。留空 = 首页公开，任何人知道域名就能看到 IP |
+| `COOKIE_SECURE` | 关 | 站点走 HTTPS 时设为 `1`，会话 Cookie 只在加密连接发送 |
+| `SECRET_KEY` | 自动 | 会话 Cookie 签名密钥。留空则自动生成到 `<数据库目录>/secret.key`（权限 600） |
+| `SESSION_DAYS` | 7 | 登录有效期（天） |
+| `LOGIN_MAX_FAILS` | 5 | 同一 IP 允许的密码错误次数（每个 gunicorn worker 独立计数） |
+| `LOGIN_LOCK_SECONDS` | 600 | 超过错误次数后的锁定时长（秒） |
+| `DB_PATH` | `./data/ips.db` | SQLite 文件路径 |
+
+> `APP_PASSWORD` 同时保护首页和 `/api/last-ip`；客户端仍用 `APP_TOKEN` 上报，不受影响。
+> `APP_PASSWORD` 为空时，服务启动日志会打一条警告。
 
 ### 7. 数据目录权限
 
@@ -334,6 +355,10 @@ Nginx 和 HTTPS 部分不变（仍然反代到 `127.0.0.1:8000`）。
 | 上报返回 502 | gunicorn 没起来，看 `journalctl -u sendip` |
 | 日志报"200 但不是接口响应" | 地址被 301 跳转到了页面，同样缺 `/receive-ip` 后缀 |
 | 首页一直是"尚未接收到" | 客户端没跑起来或没上报成功，`journalctl -u sendip-agent -f` |
+| 忘了页面密码 | 改 `/etc/send-ip.env` 里的 `APP_PASSWORD`，然后 `sudo systemctl restart sendip` |
+| 登录返回 429 /"尝试次数过多" | 同一 IP 错 `LOGIN_MAX_FAILS` 次会锁 `LOGIN_LOCK_SECONDS`（默认 5 次 / 10 分钟），等锁过期或重启服务清零 |
+| 每次重启后都要重新登录 | `secret.key` 没写成功，检查 `/var/lib/send-ip/` 属主是否为 `www-data`，或显式设置 `SECRET_KEY` |
+| 密码对了还是反复要求输入 | 会话 Cookie 没回来：走 HTTPS 并设 `COOKIE_SECURE=1`；确认 Nginx 没动 Cookie |
 | 端口 8000 通但外网不通 | 检查 ufw / 安全组，以及 Nginx 是否加载了该站点 |
 | 证书签发失败 | 确认 80 端口可达、DNS 已生效；`sudo certbot renew --dry-run` 验证续期 |
 
@@ -342,6 +367,13 @@ Nginx 和 HTTPS 部分不变（仍然反代到 `127.0.0.1:8000`）。
 ## 五、安全提醒
 
 - **务必设置 `APP_TOKEN`**，否则公网任何人都能往你的页面写假 IP。
+- **务必设置 `APP_PASSWORD`**，否则任何人知道域名就能看到你的 IP。密码比对是恒定时间的，
+  浏览器只拿到签名后的会话 Cookie（HttpOnly、SameSite=Lax、7 天），`/api/last-ip` 同样受保护。
+  密码每次登录会明文提交一次，所以务必走 HTTPS。
+- `APP_PASSWORD` 可以是你自己随手定的任意字符串（中文、符号都行），不一定非要随机串；
+  随机只是更难猜。限流只能延缓暴力破解，替代不了密码强度。
+- 值里有空格、`#`、引号时在 env 文件里用单引号包起来：`APP_PASSWORD='my pass#1'`。
+  首尾空格会被自动忽略，别指望用它当密码的一部分。
+- 密码明文存在 `/etc/send-ip.env`（权限 600）——能读这个文件的人本来就能控制服务器。
 - 全链路走 HTTPS，不要在公网用明文 HTTP 传令牌。
 - 8000 端口只绑 `127.0.0.1`，不要暴露到公网。
-- 域名和端口不对外公开时，这个页面等于公开了你家宽出口 IP，介意的话可以考虑加一层 Basic Auth 或用随机路径。

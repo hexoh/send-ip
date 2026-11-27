@@ -15,6 +15,14 @@
         "space": " ",
         "plural": "s",
         "ago": " ago",
+        "loginTitle": "Access required",
+        "loginLabel": "Protected page",
+        "loginPrompt": "Enter the access password",
+        "passwordPlaceholder": "Password",
+        "unlock": "View IP",
+        "wrongPassword": "Wrong password, please try again",
+        "tooManyAttempts": "Too many attempts, please try again later",
+        "signOut": "Sign out",
         "langLabel": "Language"
     },
     "zh": {
@@ -33,10 +41,21 @@
         "space": " ",
         "plural": "",
         "ago": "前",
+        "loginTitle": "需要验证",
+        "loginLabel": "受保护页面",
+        "loginPrompt": "请输入访问密码",
+        "passwordPlaceholder": "密码",
+        "unlock": "查看 IP",
+        "wrongPassword": "密码错误，请重试",
+        "tooManyAttempts": "尝试次数过多，请稍后再试",
+        "signOut": "退出",
         "langLabel": "语言"
     }
 } %}
 {% set lang = (lang|default("en")) if (lang|default("en")) in ("en", "zh") else "en" %}
+{# authed defaults to true so the template still renders when included without the flag #}
+{% set authed = authed|default(true) %}
+{% set error = (error|default(none)) if (error|default(none)) in ("wrongPassword", "tooManyAttempts") else none %}
 {% set T = S[lang] %}
 <!DOCTYPE html>
 <html lang="{{ 'zh-CN' if lang == 'zh' else 'en' }}">
@@ -44,7 +63,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <title>{{ T.title }}</title>
+    <title>{{ T.title if authed else T.loginTitle }}</title>
     <style>
         :root { color-scheme: light; }
         * { box-sizing: border-box; }
@@ -102,6 +121,72 @@
         .lang button:focus-visible {
             outline: 2px solid #93c5fd;
             outline-offset: 1px;
+        }
+        .signout {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            margin: 0;
+        }
+        .signout button {
+            border: 0;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: transparent;
+            font: inherit;
+            font-size: 12px;
+            color: #9ca3af;
+            cursor: pointer;
+        }
+        .signout button:hover { color: #374151; background: #f3f4f6; }
+        .signout button:focus-visible,
+        .unlock button:focus-visible {
+            outline: 2px solid #93c5fd;
+            outline-offset: 1px;
+        }
+        .prompt {
+            margin: 14px 0 18px;
+            font-size: 19px;
+            font-weight: 600;
+            color: #111827;
+        }
+        .unlock { display: grid; gap: 10px; text-align: left; }
+        .unlock input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            background: #fff;
+            font: inherit;
+            font-size: 15px;
+            color: #111827;
+        }
+        .unlock input::placeholder { color: #9ca3af; }
+        .unlock input:focus {
+            border-color: #93c5fd;
+            box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.35);
+            outline: none;
+        }
+        .unlock button {
+            padding: 10px 12px;
+            border: 0;
+            border-radius: 10px;
+            background: #111827;
+            color: #fff;
+            font: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .unlock button:hover { background: #1f2937; }
+        .error {
+            margin: -6px 0 14px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: #fef2f2;
+            color: #b91c1c;
+            font-size: 13px;
+            text-align: left;
         }
         .label {
             font-size: 13px;
@@ -164,6 +249,27 @@
                     class="{{ 'active' if lang == 'zh' else '' }}">中文</button>
         </div>
 
+        {% if not authed %}
+        {# Password prompt: no IP is rendered into this response at all #}
+        <div class="label" data-i18n="loginLabel">{{ T.loginLabel }}</div>
+        <div class="prompt" data-i18n="loginPrompt">{{ T.loginPrompt }}</div>
+        {% if error %}
+        <div class="error" role="alert" data-i18n="{{ error }}">{{ T[error] }}</div>
+        {% endif %}
+        <form class="unlock" method="post" action="login">
+            <input type="hidden" name="lang" value="{{ lang }}">
+            <input type="password" name="password" id="password" required autofocus
+                   autocomplete="current-password" spellcheck="false"
+                   placeholder="{{ T.passwordPlaceholder }}"
+                   data-i18n-placeholder="passwordPlaceholder"
+                   aria-label="{{ T.passwordPlaceholder }}">
+            <button type="submit" data-i18n="unlock">{{ T.unlock }}</button>
+        </form>
+        {% else %}
+        <form class="signout" method="post" action="logout">
+            <button type="submit" data-i18n="signOut">{{ T.signOut }}</button>
+        </form>
+
         <div class="label"><span class="dot"></span><span data-i18n="label">{{ T.label }}</span></div>
         <div class="ip"{% if not ip %} data-i18n="noIp"{% endif %}>{{ ip if ip else T.noIp }}</div>
 
@@ -183,11 +289,13 @@
         {% endif %}
 
         <div class="foot"><span data-i18n="refresh">{{ T.refresh }}</span> · <span id="clock"></span></div>
+        {% endif %}
     </div>
     <script>
         (function () {
             var I18N = {{ S|tojson }};
             var lang = {{ lang|tojson }};
+            var TITLE_KEY = {{ ('title' if authed else 'loginTitle')|tojson }};
             var STORAGE_KEY = "sendip-lang";
 
             // Accept "zh", "zh-CN", "en-US", ... and map them to a supported language.
@@ -258,10 +366,18 @@
             function apply() {
                 var s = strings();
                 document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
-                document.title = s.title;
+                document.title = s[TITLE_KEY];
                 document.querySelectorAll("[data-i18n]").forEach(function (el) {
                     var value = s[el.dataset.i18n];
                     if (value != null) el.textContent = value;
+                });
+                // Placeholders are attributes, not text, so they need their own pass (password field)
+                document.querySelectorAll("[data-i18n-placeholder]").forEach(function (el) {
+                    var value = s[el.dataset.i18nPlaceholder];
+                    if (value != null) {
+                        el.setAttribute("placeholder", value);
+                        el.setAttribute("aria-label", value);
+                    }
                 });
                 var group = document.getElementById("lang-switch");
                 if (group) group.setAttribute("aria-label", s.langLabel);
@@ -297,8 +413,11 @@
             // Recompute relative times every 30 seconds, otherwise it stays at "0 seconds ago"
             setInterval(update, 30000);
         })();
-        // Reload the whole page every 5 minutes to fetch the latest server data
+        {% if authed %}
+        // Reload the whole page every 5 minutes to fetch the latest server data.
+        // Not on the password prompt: a reload there would wipe what the visitor has typed.
         setTimeout(function () { location.reload(); }, 300000);
+        {% endif %}
     </script>
 </body>
 </html>

@@ -4,7 +4,7 @@
   <b>English</b> | <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-Fetch your public IP, report it to your own server, and view it on a web page. The client looks up the public IP and reports it once an hour; the server stores it in a database and serves a web page for viewing.
+Fetch your public IP, report it to your own server, and view it on a web page. The client looks up the public IP and reports it once an hour; the server stores it in a database and serves a password-protected web page for viewing.
 > Scope: home broadband with a public IP, or servers with a dynamic IP.
 
 ## Directory layout
@@ -106,20 +106,26 @@ python3 -m venv .venv
 .venv/bin/pip install -r server/requirements.txt
 .venv/bin/pip install -r client/requirements.txt   # install both when running both sides locally
 
-# Terminal 1: start the server
-APP_TOKEN=devtoken .venv/bin/python server/app.py
+# Terminal 1: start the server (APP_PASSWORD protects the page; drop it to keep the page public)
+APP_TOKEN=devtoken APP_PASSWORD=devpass .venv/bin/python server/app.py
 
 # Terminal 2: report once
 .venv/bin/python client/index.py --domain http://127.0.0.1:8000/receive-ip --token devtoken --once
 
-# Open http://127.0.0.1:8000 in a browser to view
+# Open http://127.0.0.1:8000 in a browser and enter devpass to view
 ```
+
+The page is gated by `APP_PASSWORD`: without it the browser gets a password card instead of the IP,
+and `/api/last-ip` is locked the same way (the client keeps using `APP_TOKEN`). Five wrong passwords
+from one IP trigger a 10-minute lockout. Leave `APP_PASSWORD` empty and the page stays public, which
+is only suitable for local testing — the service logs a warning when it starts that way.
 
 The page has a **language switch** (top-right, EN / 中文). On the first visit it follows the
 browser's `Accept-Language`, and `?lang=zh` or `?lang=en` forces a language, which is handy for
 sharing a link. The choice is remembered in `localStorage`, so the automatic 5-minute refresh keeps it.
 
 Just want to see what the page looks like (without starting the server): `.venv/bin/python tools/preview.py` generates `preview.html`;
-add `--empty` to preview the "no IP received yet" empty state, and `--lang zh` to render the Chinese version.
+add `--empty` to preview the "no IP received yet" empty state, `--lang zh` to render the Chinese version,
+and `--login` (optionally with `--error`) to preview the password prompt.
 
 For production deployment see [DEPLOY.md](docs/DEPLOY.md).

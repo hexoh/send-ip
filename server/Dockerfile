@@ -1,7 +1,8 @@
 # Server container image (optional alternative when you do not want to install a systemd service)
 # Build: docker build -t send-ip .
 # Run:   docker run -d --name send-ip -p 127.0.0.1:8000:8000 \
-#          -e APP_TOKEN=your-token -v sendip-data:/data send-ip
+#          -e APP_TOKEN=your-token -e APP_PASSWORD=your-page-password \
+#          -v sendip-data:/data send-ip
 
 FROM python:3.13-slim
 

@@ -21,11 +21,12 @@ This bundle contains only the files required by the server; extract it to /opt/s
     .venv/bin/pip install --upgrade pip
     .venv/bin/pip install -r requirements.txt
 
-3) Generate a token and write the config (save the token; the client needs it)
+3) Generate a token and the page password, then write the config (save the token; the client needs it)
 
-    python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+    python3 -c "import secrets; print(secrets.token_urlsafe(32))"   # client token
+    python3 -c "import secrets; print(secrets.token_urlsafe(18))"   # page password (or pick your own)
     sudo cp .env.example /etc/send-ip.env
-    sudo nano /etc/send-ip.env        # replace APP_TOKEN with the generated token
+    sudo nano /etc/send-ip.env        # set APP_TOKEN and APP_PASSWORD, and COOKIE_SECURE=1 on HTTPS
     sudo chmod 600 /etc/send-ip.env
 
     sudo mkdir -p /var/lib/send-ip
@@ -54,7 +55,9 @@ This bundle contains only the files required by the server; extract it to /opt/s
       -H "X-Auth-Token: your-token" \\
       -d '{"ip_address":"1.2.3.4"}'
 
-Open the domain in a browser to see the IP; the page refreshes automatically every 5 minutes.
+Open the domain in a browser to see the IP; the page asks for the access password you set in
+`APP_PASSWORD` first, then refreshes automatically every 5 minutes. "Sign out" in the top-left
+corner locks it again.
 The page follows the browser language (English / 简体中文) and has an EN / 中文 switch in the
 top-right corner; add `?lang=zh` or `?lang=en` to the URL to force one.
 
@@ -63,6 +66,8 @@ top-right corner; add `?lang=zh` or `?lang=en` to the URL to force one.
 - systemctl status sendip / journalctl -u sendip -n 50
 - Report returns 401: the client token does not match the server APP_TOKEN
 - Report returns 502: gunicorn is not running; check journalctl
+- Forgot the page password: edit APP_PASSWORD in /etc/send-ip.env, then systemctl restart sendip
+- Login says "too many attempts" (429): too many wrong passwords from one IP; wait 10 minutes or restart
 - Port 8000 only binds 127.0.0.1; do not expose it to the public internet
 
 ---
@@ -88,11 +93,12 @@ top-right corner; add `?lang=zh` or `?lang=en` to the URL to force one.
     .venv/bin/pip install --upgrade pip
     .venv/bin/pip install -r requirements.txt
 
-3) 生成令牌并写配置（令牌要记下来，客户端要用）
+3) 生成令牌与页面密码，写配置（令牌要记下来，客户端要用）
 
-    python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+    python3 -c "import secrets; print(secrets.token_urlsafe(32))"   # 客户端令牌
+    python3 -c "import secrets; print(secrets.token_urlsafe(18))"   # 页面密码（也可以自己定）
     sudo cp .env.example /etc/send-ip.env
-    sudo nano /etc/send-ip.env        # 把 APP_TOKEN 换成刚生成的令牌
+    sudo nano /etc/send-ip.env        # 填 APP_TOKEN 和 APP_PASSWORD，HTTPS 站点再加 COOKIE_SECURE=1
     sudo chmod 600 /etc/send-ip.env
 
     sudo mkdir -p /var/lib/send-ip
@@ -121,7 +127,8 @@ top-right corner; add `?lang=zh` or `?lang=en` to the URL to force one.
       -H "X-Auth-Token: 你的令牌" \\
       -d '{"ip_address":"1.2.3.4"}'
 
-浏览器打开域名即可看到 IP，页面每 5 分钟自动刷新。页面跟随浏览器语言（英文 / 简体中文），
+浏览器打开域名即可看到 IP，会先要求输入 `APP_PASSWORD` 里设的访问密码，之后页面每 5 分钟自动刷新，
+左上角"退出"可重新上锁。页面跟随浏览器语言（英文 / 简体中文），
 右上角有 EN / 中文 切换；也可以在网址后加 `?lang=zh` 或 `?lang=en` 强制指定。
 
 ## 排错
@@ -129,4 +136,6 @@ top-right corner; add `?lang=zh` or `?lang=en` to the URL to force one.
 - systemctl status sendip / journalctl -u sendip -n 50
 - 上报 401：客户端令牌与服务端 APP_TOKEN 不一致
 - 上报 502：gunicorn 没起来，看 journalctl
+- 忘了页面密码：改 /etc/send-ip.env 里的 APP_PASSWORD，然后 systemctl restart sendip
+- 登录提示"尝试次数过多"（429）：同一 IP 密码错太多次，等 10 分钟或重启服务
 - 8000 端口只绑 127.0.0.1，不要在外网放行

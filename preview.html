@@ -1,6 +1,9 @@
 
 
 
+
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -66,6 +69,72 @@
             outline: 2px solid #93c5fd;
             outline-offset: 1px;
         }
+        .signout {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            margin: 0;
+        }
+        .signout button {
+            border: 0;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: transparent;
+            font: inherit;
+            font-size: 12px;
+            color: #9ca3af;
+            cursor: pointer;
+        }
+        .signout button:hover { color: #374151; background: #f3f4f6; }
+        .signout button:focus-visible,
+        .unlock button:focus-visible {
+            outline: 2px solid #93c5fd;
+            outline-offset: 1px;
+        }
+        .prompt {
+            margin: 14px 0 18px;
+            font-size: 19px;
+            font-weight: 600;
+            color: #111827;
+        }
+        .unlock { display: grid; gap: 10px; text-align: left; }
+        .unlock input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            background: #fff;
+            font: inherit;
+            font-size: 15px;
+            color: #111827;
+        }
+        .unlock input::placeholder { color: #9ca3af; }
+        .unlock input:focus {
+            border-color: #93c5fd;
+            box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.35);
+            outline: none;
+        }
+        .unlock button {
+            padding: 10px 12px;
+            border: 0;
+            border-radius: 10px;
+            background: #111827;
+            color: #fff;
+            font: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .unlock button:hover { background: #1f2937; }
+        .error {
+            margin: -6px 0 14px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: #fef2f2;
+            color: #b91c1c;
+            font-size: 13px;
+            text-align: left;
+        }
         .label {
             font-size: 13px;
             letter-spacing: 0.08em;
@@ -127,6 +196,11 @@
                     class="">中文</button>
         </div>
 
+        
+        <form class="signout" method="post" action="logout">
+            <button type="submit" data-i18n="signOut">Sign out</button>
+        </form>
+
         <div class="label"><span class="dot"></span><span data-i18n="label">Current Public IP</span></div>
         <div class="ip">203.0.113.55</div>
 
@@ -134,21 +208,23 @@
         <div class="rows">
             <div class="row">
                 <span class="k" data-i18n="ipChangedAt">IP changed at</span>
-                <span class="v" id="first-seen" data-ts="2026-11-24T10:27:54+08:00">2026-11-24T10:27:54+08:00</span>
+                <span class="v" id="first-seen" data-ts="2026-11-24T10:39:03+08:00">2026-11-24T10:39:03+08:00</span>
             </div>
             <div class="row">
                 <span class="k" data-i18n="lastHeartbeat">Last heartbeat</span>
-                <span class="v" id="last-seen" data-ts="2026-11-27T12:03:54+08:00">2026-11-27T12:03:54+08:00</span>
+                <span class="v" id="last-seen" data-ts="2026-11-27T12:15:03+08:00">2026-11-27T12:15:03+08:00</span>
             </div>
         </div>
         
 
         <div class="foot"><span data-i18n="refresh">Page refreshes automatically every 5 minutes</span> · <span id="clock"></span></div>
+        
     </div>
     <script>
         (function () {
-            var I18N = {"en": {"ago": " ago", "day": "day", "hour": "hour", "ipChangedAt": "IP changed at", "label": "Current Public IP", "langLabel": "Language", "lastHeartbeat": "Last heartbeat", "minute": "minute", "noIp": "No IP received yet", "now": "Now ", "plural": "s", "refresh": "Page refreshes automatically every 5 minutes", "second": "second", "space": " ", "title": "Current Public IP", "waiting": "Waiting for the first client report"}, "zh": {"ago": "\u524d", "day": "\u5929", "hour": "\u5c0f\u65f6", "ipChangedAt": "IP \u53d8\u66f4\u65f6\u95f4", "label": "\u5f53\u524d\u516c\u7f51 IP", "langLabel": "\u8bed\u8a00", "lastHeartbeat": "\u6700\u8fd1\u5fc3\u8df3", "minute": "\u5206\u949f", "noIp": "\u5c1a\u672a\u6536\u5230 IP", "now": "\u73b0\u5728 ", "plural": "", "refresh": "\u9875\u9762\u6bcf 5 \u5206\u949f\u81ea\u52a8\u5237\u65b0", "second": "\u79d2", "space": " ", "title": "\u5f53\u524d\u516c\u7f51 IP", "waiting": "\u7b49\u5f85\u5ba2\u6237\u7aef\u9996\u6b21\u4e0a\u62a5"}};
+            var I18N = {"en": {"ago": " ago", "day": "day", "hour": "hour", "ipChangedAt": "IP changed at", "label": "Current Public IP", "langLabel": "Language", "lastHeartbeat": "Last heartbeat", "loginLabel": "Protected page", "loginPrompt": "Enter the access password", "loginTitle": "Access required", "minute": "minute", "noIp": "No IP received yet", "now": "Now ", "passwordPlaceholder": "Password", "plural": "s", "refresh": "Page refreshes automatically every 5 minutes", "second": "second", "signOut": "Sign out", "space": " ", "title": "Current Public IP", "tooManyAttempts": "Too many attempts, please try again later", "unlock": "View IP", "waiting": "Waiting for the first client report", "wrongPassword": "Wrong password, please try again"}, "zh": {"ago": "\u524d", "day": "\u5929", "hour": "\u5c0f\u65f6", "ipChangedAt": "IP \u53d8\u66f4\u65f6\u95f4", "label": "\u5f53\u524d\u516c\u7f51 IP", "langLabel": "\u8bed\u8a00", "lastHeartbeat": "\u6700\u8fd1\u5fc3\u8df3", "loginLabel": "\u53d7\u4fdd\u62a4\u9875\u9762", "loginPrompt": "\u8bf7\u8f93\u5165\u8bbf\u95ee\u5bc6\u7801", "loginTitle": "\u9700\u8981\u9a8c\u8bc1", "minute": "\u5206\u949f", "noIp": "\u5c1a\u672a\u6536\u5230 IP", "now": "\u73b0\u5728 ", "passwordPlaceholder": "\u5bc6\u7801", "plural": "", "refresh": "\u9875\u9762\u6bcf 5 \u5206\u949f\u81ea\u52a8\u5237\u65b0", "second": "\u79d2", "signOut": "\u9000\u51fa", "space": " ", "title": "\u5f53\u524d\u516c\u7f51 IP", "tooManyAttempts": "\u5c1d\u8bd5\u6b21\u6570\u8fc7\u591a\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5", "unlock": "\u67e5\u770b IP", "waiting": "\u7b49\u5f85\u5ba2\u6237\u7aef\u9996\u6b21\u4e0a\u62a5", "wrongPassword": "\u5bc6\u7801\u9519\u8bef\uff0c\u8bf7\u91cd\u8bd5"}};
             var lang = "en";
+            var TITLE_KEY = "title";
             var STORAGE_KEY = "sendip-lang";
 
             // Accept "zh", "zh-CN", "en-US", ... and map them to a supported language.
@@ -219,10 +295,18 @@
             function apply() {
                 var s = strings();
                 document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
-                document.title = s.title;
+                document.title = s[TITLE_KEY];
                 document.querySelectorAll("[data-i18n]").forEach(function (el) {
                     var value = s[el.dataset.i18n];
                     if (value != null) el.textContent = value;
+                });
+                // Placeholders are attributes, not text, so they need their own pass (password field)
+                document.querySelectorAll("[data-i18n-placeholder]").forEach(function (el) {
+                    var value = s[el.dataset.i18nPlaceholder];
+                    if (value != null) {
+                        el.setAttribute("placeholder", value);
+                        el.setAttribute("aria-label", value);
+                    }
                 });
                 var group = document.getElementById("lang-switch");
                 if (group) group.setAttribute("aria-label", s.langLabel);
@@ -258,8 +342,11 @@
             // Recompute relative times every 30 seconds, otherwise it stays at "0 seconds ago"
             setInterval(update, 30000);
         })();
-        // Reload the whole page every 5 minutes to fetch the latest server data
+        
+        // Reload the whole page every 5 minutes to fetch the latest server data.
+        // Not on the password prompt: a reload there would wipe what the visitor has typed.
         setTimeout(function () { location.reload(); }, 300000);
+        
     </script>
 </body>
 </html>
